@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学園祭レジシステム</title>
+    <style>
+        /* モバイルファーストのシンプルなデザイン */
+        body { font-family: sans-serif; padding: 20px; background-color: #f9f9f9; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5em; text-align: center; }
+        .item-btn { display: block; width: 100%; padding: 15px; margin-bottom: 10px; font-size: 1.2em; border: none; border-radius: 4px; background-color: #e0f7fa; cursor: pointer; }
+        .item-btn:active { background-color: #b2ebf2; }
+        .cart { margin: 20px 0; padding: 15px; background-color: #fff3e0; border-radius: 4px; }
+        .cart-total { font-size: 1.5em; font-weight: bold; text-align: right; margin: 0; }
+        .action-btn { width: 100%; padding: 15px; font-size: 1.2em; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px; color: white; }
+        .btn-clear { background-color: #9e9e9e; }
+        .btn-checkout { background-color: #4caf50; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>レジ画面（テスト）</h1>
+        
+        <button class="item-btn" onclick="addItem(500)">焼きそば (¥500)</button>
+        <button class="item-btn" onclick="addItem(150)">ドリンク (¥150)</button>
+
+        <div class="cart">
+            <p>合計金額:</p>
+            <p class="cart-total">¥<span id="totalDisplay">0</span></p>
+        </div>
+
+        <button class="action-btn btn-clear" onclick="clearCart()">カートを取消</button>
+        <button class="action-btn btn-checkout" onclick="checkout()">会計確定</button>
+    </div>
+
+    <script>
+        let currentTotal = 0;
+
+        // 商品を追加する関数
+        function addItem(price) {
+            currentTotal += price;
+            updateDisplay();
+        }
+
+        // カートを空にする関数
+        function clearCart() {
+            currentTotal = 0;
+            updateDisplay();
+        }
+
+        // 画面の金額を更新する関数
+        function updateDisplay() {
+            document.getElementById('totalDisplay').textContent = currentTotal;
+        }
+
+        // 会計を確定し、バックエンド(API)にデータを送る関数
+        async function checkout() {
+            if (currentTotal === 0) {
+                alert("商品が選択されていません！");
+                return;
+            }
+
+            try {
+                // FastAPIの /sales にPOSTリクエストを送る
+                const response = await fetch('/sales', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ total_amount: currentTotal })
+                });
+
+                if (response.ok) {
+                    alert(`¥${currentTotal} の売上を記録しました！`);
+                    clearCart(); // 成功したらカートを空にする
+                } else {
+                    alert("通信エラーが発生しました。");
+                }
+            } catch (error) {
+                alert("サーバーに接続できません。");
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>
