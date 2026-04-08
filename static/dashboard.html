@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>売上ダッシュボード</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f0f2f5; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .stat-value { font-size: 1.8em; font-weight: bold; color: #1a73e8; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        .refresh-btn { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div style="max-width: 600px; margin: 0 auto;">
+        <h1>売上管理ダッシュボード</h1>
+        
+        <div class="stat-grid">
+            <div class="card">
+                <p>総売上</p>
+                <div class="stat-value">¥<span id="totalRevenue">0</span></div>
+            </div>
+            <div class="card">
+                <p>決済件数</p>
+                <div class="stat-value"><span id="transactionCount">0</span>件</div>
+            </div>
+        </div>
+
+        <button class="refresh-btn" onclick="loadDashboard()">最新の情報に更新</button>
+
+        <div class="card">
+            <h3>最近の取引履歴</h3>
+            <table id="salesTable">
+                <thead>
+                    <tr>
+                        <th>時刻 (JST)</th>
+                        <th>金額</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function loadDashboard() {
+            try {
+                const response = await fetch('/sales');
+                const data = await response.json();
+                
+                let total = 0;
+                const tbody = document.querySelector('#salesTable tbody');
+                tbody.innerHTML = ''; // 一旦クリア
+
+                // データを新しい順に並び替えて表示
+                data.reverse().forEach(sale => {
+                    total += sale.total_amount;
+                    
+                    // 時刻を日本時間に変換
+                    const date = new Date(sale.created_at + "Z"); // UTCとして解釈
+                    const timeStr = date.toLocaleString('ja-JP', { hour12: false });
+
+                    const row = `<tr><td>${timeStr}</td><td>¥${sale.total_amount}</td></tr>`;
+                    tbody.innerHTML += row;
+                });
+
+                document.getElementById('totalRevenue').textContent = total.toLocaleString();
+                document.getElementById('transactionCount').textContent = data.length;
+
+            } catch (error) {
+                console.error("データの取得に失敗しました", error);
+            }
+        }
+
+        // 初回読み込み
+        loadDashboard();
+    </script>
+</body>
+</html>
