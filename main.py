@@ -41,3 +41,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def read_root():
     return FileResponse("static/index.html")
+# http://127.0.0.1:8000/admin にアクセスしたとき、dashboard.htmlを返す
+@app.get("/admin")
+def read_dashboard():
+    return FileResponse("static/dashboard.html")
