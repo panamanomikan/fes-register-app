@@ -38,7 +38,7 @@
                 <thead>
                     <tr>
                         <th>時刻 (JST)</th>
-                        <th>金額</th>
+                        <th>購入内訳</th> <th>金額</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -54,17 +54,35 @@
                 
                 let total = 0;
                 const tbody = document.querySelector('#salesTable tbody');
-                tbody.innerHTML = ''; // 一旦クリア
+                tbody.innerHTML = ''; 
 
-                // データを新しい順に並び替えて表示
                 data.reverse().forEach(sale => {
                     total += sale.total_amount;
                     
-                    // 時刻を日本時間に変換
-                    const date = new Date(sale.created_at + "Z"); // UTCとして解釈
-                    const timeStr = date.toLocaleString('ja-JP', { hour12: false });
+                    // 時刻のパース処理を堅牢化（Zがない場合に対応）
+                    const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
+                    const date = new Date(dateStr);
+                    const timeStr = date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-                    const row = `<tr><td>${timeStr}</td><td>¥${sale.total_amount}</td></tr>`;
+                    // JSON文字列から内訳テキストを生成
+                    let itemsText = "-";
+                    if (sale.items_json) {
+                        try {
+                            const itemsObj = JSON.parse(sale.items_json);
+                            // {"焼きそば": 1, "ドリンク": 2} -> "焼きそば×1, ドリンク×2"
+                            itemsText = Object.entries(itemsObj)
+                                              .map(([name, count]) => `${name}×${count}`)
+                                              .join(', ');
+                        } catch (e) {
+                            itemsText = "解析エラー";
+                        }
+                    }
+
+                    const row = `<tr>
+                        <td>${timeStr}</td>
+                        <td>${itemsText}</td>
+                        <td>¥${sale.total_amount}</td>
+                    </tr>`;
                     tbody.innerHTML += row;
                 });
 
@@ -76,7 +94,6 @@
             }
         }
 
-        // 初回読み込み
         loadDashboard();
     </script>
 </body>
