@@ -2,8 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>売上ダッシュボード</title>
+    <title>売上管理ダッシュボード</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background-color: #f0f2f5; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
@@ -12,12 +11,12 @@
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
         th { background-color: #f8f9fa; }
-        .refresh-btn { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .refresh-btn { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <div style="max-width: 600px; margin: 0 auto;">
-        <h1>売上管理ダッシュボード</h1>
+    <div style="max-width: 800px; margin: 0 auto;">
+        <h1>売上管理ダッシュボード（幹部用）</h1>
         
         <div class="stat-grid">
             <div class="card">
@@ -30,16 +29,23 @@
             </div>
         </div>
 
-        <button class="refresh-btn" onclick="loadDashboard()">最新の情報に更新</button>
+        <button class="refresh-btn" onclick="refreshAll()">最新の情報に更新</button>
+
+        <div class="card">
+            <h3>商品管理（削除・価格変更）</h3>
+            <table id="itemsTable">
+                <thead>
+                    <tr><th>商品名</th><th>カテゴリ</th><th>現在の価格</th><th>操作</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
 
         <div class="card">
             <h3>最近の取引履歴</h3>
             <table id="salesTable">
                 <thead>
-                    <tr>
-                        <th>時刻 (JST)</th>
-                        <th>購入内訳</th> <th>金額</th>
-                    </tr>
+                    <tr><th>時刻 (JST)</th><th>購入内訳</th><th>金額</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
@@ -48,53 +54,69 @@
 
     <script>
         async function loadDashboard() {
-            try {
-                const response = await fetch('/sales');
-                const data = await response.json();
-                
-                let total = 0;
-                const tbody = document.querySelector('#salesTable tbody');
-                tbody.innerHTML = ''; 
-
-                data.reverse().forEach(sale => {
-                    total += sale.total_amount;
-                    
-                    // 時刻のパース処理を堅牢化（Zがない場合に対応）
-                    const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
-                    const date = new Date(dateStr);
-                    const timeStr = date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-                    // JSON文字列から内訳テキストを生成
-                    let itemsText = "-";
-                    if (sale.items_json) {
-                        try {
-                            const itemsObj = JSON.parse(sale.items_json);
-                            // {"焼きそば": 1, "ドリンク": 2} -> "焼きそば×1, ドリンク×2"
-                            itemsText = Object.entries(itemsObj)
-                                              .map(([name, count]) => `${name}×${count}`)
-                                              .join(', ');
-                        } catch (e) {
-                            itemsText = "解析エラー";
-                        }
-                    }
-
-                    const row = `<tr>
-                        <td>${timeStr}</td>
-                        <td>${itemsText}</td>
-                        <td>¥${sale.total_amount}</td>
-                    </tr>`;
-                    tbody.innerHTML += row;
-                });
-
-                document.getElementById('totalRevenue').textContent = total.toLocaleString();
-                document.getElementById('transactionCount').textContent = data.length;
-
-            } catch (error) {
-                console.error("データの取得に失敗しました", error);
-            }
+            const response = await fetch('/sales');
+            const data = await response.json();
+            let total = 0;
+            const tbody = document.querySelector('#salesTable tbody');
+            tbody.innerHTML = ''; 
+            data.reverse().forEach(sale => {
+                total += sale.total_amount;
+                const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
+                const date = new Date(dateStr);
+                const timeStr = date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                let itemsText = "-";
+                if (sale.items_json) {
+                    try {
+                        const itemsObj = JSON.parse(sale.items_json);
+                        itemsText = Object.entries(itemsObj).map(([name, count]) => `${name}×${count}`).join(', ');
+                    } catch (e) { itemsText = "解析エラー"; }
+                }
+                tbody.innerHTML += `<tr><td>${timeStr}</td><td>${itemsText}</td><td>¥${sale.total_amount}</td></tr>`;
+            });
+            document.getElementById('totalRevenue').textContent = total.toLocaleString();
+            document.getElementById('transactionCount').textContent = data.length;
         }
 
-        loadDashboard();
+        async function loadAdminItems() {
+            const response = await fetch('/items');
+            const items = await response.json();
+            const tbody = document.querySelector('#itemsTable tbody');
+            tbody.innerHTML = ''; 
+            items.forEach(item => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${item.name}</td>
+                        <td>${item.category || '一般'}</td>
+                        <td>¥${item.price}</td>
+                        <td>
+                            <input type="number" id="price-${item.id}" value="${item.price}" style="width:60px">
+                            <button onclick="updatePrice(${item.id})" style="background:#4caf50; color:white; border:none; padding:5px; border-radius:4px; cursor:pointer;">更新</button>
+                            <button onclick="deleteItem(${item.id})" style="background:#ff4d4d; color:white; border:none; padding:5px; border-radius:4px; cursor:pointer; margin-left:5px;">削除</button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        async function updatePrice(itemId) {
+            const newPrice = document.getElementById(`price-${itemId}`).value;
+            await fetch(`/items/${itemId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ price: parseInt(newPrice) })
+            });
+            alert("価格を更新しました");
+            loadAdminItems();
+        }
+
+        async function deleteItem(itemId) {
+            if (!confirm("本当に削除しますか？売上データには影響しません。")) return;
+            await fetch(`/items/${itemId}`, { method: 'DELETE' });
+            alert("削除しました");
+            loadAdminItems();
+        }
+
+        function refreshAll() { loadDashboard(); loadAdminItems(); }
+        window.onload = refreshAll;
     </script>
 </body>
 </html>

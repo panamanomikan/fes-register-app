@@ -5,29 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学園祭レジシステム</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f9f9f9; }
-        .container { max-width: 400px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1 { font-size: 1.5em; text-align: center; }
-        .item-btn { display: block; width: 100%; padding: 15px; margin-bottom: 10px; font-size: 1.2em; border: none; border-radius: 4px; background-color: #e0f7fa; cursor: pointer; }
-        .item-btn:active { background-color: #b2ebf2; }
-        .cart { margin: 20px 0; padding: 15px; background-color: #fff3e0; border-radius: 4px; }
-        /* 追加: カートの中身リスト用スタイル */
+        body { font-family: sans-serif; padding: 10px; background-color: #f9f9f9; margin: 0; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5em; text-align: center; margin-top: 0; }
+        .item-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+        .item-card { 
+            background: #fff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 10px; 
+            text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center;
+        }
+        .item-card:active { background-color: #e0f7fa; border-color: #00bcd4; }
+        .item-img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; background-color: #eeeeee; margin-bottom: 5px; }
+        .item-name { font-weight: bold; font-size: 1.1em; margin: 5px 0; }
+        .item-price { color: #e91e63; font-weight: bold; }
+        .special-btn { width: 100%; padding: 15px; margin-bottom: 10px; font-size: 1.1em; border: 2px dashed #9c27b0; border-radius: 8px; background-color: #f3e5f5; color: #9c27b0; font-weight: bold; cursor: pointer; }
+        .add-product-btn { width: 100%; padding: 15px; margin-bottom: 20px; font-size: 1.1em; border: none; border-radius: 8px; background-color: #2196f3; color: white; font-weight: bold; cursor: pointer; }
+        .cart { padding: 15px; background-color: #fff3e0; border-radius: 4px; margin-bottom: 15px; }
         #cartItemsList { margin: 10px 0; padding-left: 20px; font-size: 1.1em; color: #333; }
-        .cart-total { font-size: 1.5em; font-weight: bold; text-align: right; margin: 0; }
-        .action-btn { width: 100%; padding: 15px; font-size: 1.2em; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px; color: white; }
+        .cart-total { font-size: 1.5em; font-weight: bold; text-align: right; margin: 0; color: #d32f2f; }
+        .action-btn { width: 100%; padding: 15px; font-size: 1.2em; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 10px; color: white; font-weight: bold; }
         .btn-clear { background-color: #9e9e9e; }
-        .btn-checkout { background-color: #4caf50; font-weight: bold; }
+        .btn-checkout { background-color: #4caf50; }
+        /* 追加フォーム用 */
+        #addForm { display: none; background: #f1f8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #cce5ff; }
+        #addForm input { width: 90%; padding: 8px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>レジ画面</h1>
         
-        <button class="item-btn" onclick="addItem('焼きそば', 500)">焼きそば (¥500)</button>
-        <button class="item-btn" onclick="addItem('ドリンク', 150)">ドリンク (¥150)</button>
+        <button class="add-product-btn" onclick="toggleAddForm()">＋ 新しい商品を追加する</button>
+
+        <div id="addForm">
+            <h3>商品登録</h3>
+            <input type="text" id="newName" placeholder="商品名（例：レジン金）"><br>
+            <input type="number" id="newPrice" placeholder="価格（例：500）"><br>
+            <input type="text" id="newCategory" placeholder="カテゴリ（例：小物）" value="一般"><br>
+            画像：<input type="file" id="newFile" accept="image/*"><br>
+            <button onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:10px; width:100%; border-radius:4px;">登録実行</button>
+        </div>
+
+        <div id="itemGrid" class="item-grid">
+            <p style="grid-column: span 2; text-align: center;">商品を読み込み中...</p>
+        </div>
+
+        <button class="special-btn" onclick="addCustomItem()">＋ 金額を手動で入力する</button>
 
         <div class="cart">
-            <p style="margin-top:0; font-weight:bold;">カートの中身:</p>
+            <p style="margin-top:0; font-weight:bold;">🛒 カートの中身:</p>
             <ul id="cartItemsList"></ul>
             <hr style="border: 0; border-top: 1px dashed #ccc;">
             <p>合計金額:</p>
@@ -39,81 +64,141 @@
     </div>
 
     <script>
-        // 金額だけでなく、カートの状態（商品名と個数）を管理するオブジェクトに変更
         let cart = {};
 
-        // 商品を追加する関数
-        function addItem(itemName, price) {
-            if (!cart[itemName]) {
-                cart[itemName] = { price: price, quantity: 0 };
+        function toggleAddForm() {
+            const f = document.getElementById('addForm');
+            f.style.display = f.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function submitNewItem() {
+            const name = document.getElementById('newName').value;
+            const price = document.getElementById('newPrice').value;
+            const category = document.getElementById('newCategory').value;
+            const fileInput = document.getElementById('newFile');
+
+            if (!name || !price || !fileInput.files[0]) {
+                alert("入力が不足しています");
+                return;
             }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('price', price);
+            formData.append('category', category);
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const res = await fetch('/items', { method: 'POST', body: formData });
+                if (res.ok) {
+                    alert("商品を登録しました！");
+                    location.reload();
+                } else {
+                    alert("登録に失敗しました");
+                }
+            } catch (e) { alert("接続エラー"); }
+        }
+
+        async function loadItems() {
+            try {
+                const response = await fetch('/items');
+                const items = await response.json();
+                const grid = document.getElementById('itemGrid');
+                grid.innerHTML = '';
+                items.forEach(item => {
+                    const imgSrc = item.image_url ? item.image_url : 'data:image/svg+xml;...';
+                    const card = document.createElement('div');
+                    card.className = 'item-card';
+                    card.onclick = () => addItem(item.name, item.price);
+                    card.innerHTML = `
+                        <img src="${imgSrc}" class="item-img">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-price">¥${item.price}</div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (error) { console.error(error); }
+        }
+
+        function addItem(itemName, price) {
+            if (!cart[itemName]) cart[itemName] = { price: price, quantity: 0 };
             cart[itemName].quantity += 1;
             updateDisplay();
         }
 
-        // カートを空にする関数
-        function clearCart() {
-            cart = {};
-            updateDisplay();
+        function addCustomItem() {
+            const priceStr = prompt("金額を半角数字で入力してください:");
+            if (!priceStr || isNaN(priceStr)) return;
+            const name = prompt("商品名や備考:", "カスタム金額");
+            if (!name) return;
+            addItem(name, parseInt(priceStr, 10));
         }
 
-        // 画面の金額とリストを更新する関数
+        function clearCart() { cart = {}; updateDisplay(); }
+
         function updateDisplay() {
             let currentTotal = 0;
             const listElement = document.getElementById('cartItemsList');
-            listElement.innerHTML = ''; // リストを一旦リセット
-
+            listElement.innerHTML = ''; 
             for (const [itemName, itemData] of Object.entries(cart)) {
-                // サブ合計を計算
                 currentTotal += itemData.price * itemData.quantity;
-                // リストに項目を追加
                 const li = document.createElement('li');
                 li.textContent = `${itemName} × ${itemData.quantity} = ¥${itemData.price * itemData.quantity}`;
                 listElement.appendChild(li);
             }
-
             document.getElementById('totalDisplay').textContent = currentTotal;
         }
 
-        // 会計を確定し、APIにデータを送る関数
         async function checkout() {
-            // 現在のカートから合計金額と送信用の内訳データを再計算
             let finalTotal = 0;
             let itemsToSave = {};
-
             for (const [itemName, itemData] of Object.entries(cart)) {
                 finalTotal += itemData.price * itemData.quantity;
-                itemsToSave[itemName] = itemData.quantity; // 例: {"焼きそば": 2}
+                itemsToSave[itemName] = itemData.quantity; 
             }
-
-            if (finalTotal === 0) {
-                alert("商品が選択されていません！");
-                return;
-            }
-
-            // FastAPIへ送るデータ
-            const payload = {
-                total_amount: finalTotal,
-                items_json: JSON.stringify(itemsToSave) // 文字列化して送信
-            };
-
+            if (finalTotal === 0) return;
+            const payload = { total_amount: finalTotal, items_json: JSON.stringify(itemsToSave) };
             try {
                 const response = await fetch('/sales', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                if (response.ok) { alert(`売上 ¥${finalTotal} を記録しました！`); clearCart(); }
+            } catch (error) { alert("接続エラー"); }
+        }
 
-                if (response.ok) {
-                    alert(`¥${finalTotal} の売上を記録しました！`);
-                    clearCart();
-                } else {
-                    alert("通信エラーが発生しました。");
-                }
-            } catch (error) {
-                alert("サーバーに接続できません。");
-                console.error(error);
+        window.onload = loadItems;
+        
+
+
+
+        async function submitNewItem() {
+            const name = document.getElementById('newName').value;
+            const price = document.getElementById('newPrice').value;
+            const fileInput = document.getElementById('newFile');
+
+            if (!name || !price || !fileInput.files[0]) {
+                alert("入力と画像をすべて選択してください！");
+                return;
             }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('price', price);
+            formData.append('category', document.getElementById('newCategory').value);
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const res = await fetch('/items', { method: 'POST', body: formData });
+                if (res.ok) {
+                    alert("商品を登録しました！");
+                    location.reload();
+                } else {
+                    const err = await res.json();
+                    alert(`エラー: ${err.detail || "登録に失敗しました。Supabaseの権限設定を確認してください。"}`);
+                }
+            } catch (e) { alert("サーバーに接続できません"); }
         }
     </script>
 </body>
