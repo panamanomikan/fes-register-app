@@ -2,54 +2,51 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>学園祭レジシステム</title>
     <style>
         body { font-family: sans-serif; padding: 10px; background-color: #f9f9f9; margin: 0; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1 { font-size: 1.5em; text-align: center; margin-top: 0; }
+        h1 { font-size: 1.5em; text-align: center; margin-top: 0; margin-bottom: 10px; }
+        
+        /* ズーム防止用：inputのフォントサイズを16px以上に */
+        input[type="text"], input[type="number"], input[type="file"] { font-size: 16px; width: 90%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; }
+        
+        /* タブのスタイル */
+        .tabs { display: flex; overflow-x: auto; border-bottom: 2px solid #ddd; margin-bottom: 15px; padding-bottom: 5px; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+        .tab-btn { padding: 10px 15px; background: none; border: none; font-size: 1.1em; cursor: pointer; color: #666; font-weight: bold; }
+        .tab-btn.active { color: #2196f3; border-bottom: 3px solid #2196f3; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
         .item-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
-        .item-card { 
-            background: #fff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 10px; 
-            text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        }
+        .item-card { background: #fff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; }
         .item-card:active { background-color: #e0f7fa; border-color: #00bcd4; }
         .item-img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; background-color: #eeeeee; margin-bottom: 5px; }
         .item-name { font-weight: bold; font-size: 1.1em; margin: 5px 0; }
         .item-price { color: #e91e63; font-weight: bold; }
+
         .special-btn { width: 100%; padding: 15px; margin-bottom: 10px; font-size: 1.1em; border: 2px dashed #9c27b0; border-radius: 8px; background-color: #f3e5f5; color: #9c27b0; font-weight: bold; cursor: pointer; }
-        .add-product-btn { width: 100%; padding: 15px; margin-bottom: 20px; font-size: 1.1em; border: none; border-radius: 8px; background-color: #2196f3; color: white; font-weight: bold; cursor: pointer; }
+        
         .cart { padding: 15px; background-color: #fff3e0; border-radius: 4px; margin-bottom: 15px; }
         #cartItemsList { margin: 10px 0; padding-left: 20px; font-size: 1.1em; color: #333; }
         .cart-total { font-size: 1.5em; font-weight: bold; text-align: right; margin: 0; color: #d32f2f; }
         .action-btn { width: 100%; padding: 15px; font-size: 1.2em; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 10px; color: white; font-weight: bold; }
         .btn-clear { background-color: #9e9e9e; }
         .btn-checkout { background-color: #4caf50; }
-        /* 追加フォーム用 */
-        #addForm { display: none; background: #f1f8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #cce5ff; }
-        #addForm input { width: 90%; padding: 8px; margin-bottom: 10px; }
+        
+        #addForm { background: #f1f8ff; padding: 15px; border-radius: 8px; border: 1px solid #cce5ff; margin-bottom: 10px;}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>レジ画面</h1>
-        
-        <button class="add-product-btn" onclick="toggleAddForm()">＋ 新しい商品を追加する</button>
+        <h1>学園祭レジ</h1>
 
-        <div id="addForm">
-            <h3>商品登録</h3>
-            <input type="text" id="newName" placeholder="商品名（例：レジン金）"><br>
-            <input type="number" id="newPrice" placeholder="価格（例：500）"><br>
-            <input type="text" id="newCategory" placeholder="カテゴリ（例：小物）" value="一般"><br>
-            画像：<input type="file" id="newFile" accept="image/*"><br>
-            <button onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:10px; width:100%; border-radius:4px;">登録実行</button>
+        <div id="tabsContainer" class="tabs">
+            <p>読み込み中...</p>
         </div>
 
-        <div id="itemGrid" class="item-grid">
-            <p style="grid-column: span 2; text-align: center;">商品を読み込み中...</p>
-        </div>
-
-        <button class="special-btn" onclick="addCustomItem()">＋ 金額を手動で入力する</button>
+        <div id="tabContentsContainer"></div>
 
         <div class="cart">
             <p style="margin-top:0; font-weight:bold;">🛒 カートの中身:</p>
@@ -65,48 +62,47 @@
 
     <script>
         let cart = {};
-
-        function toggleAddForm() {
-            const f = document.getElementById('addForm');
-            f.style.display = f.style.display === 'none' ? 'block' : 'none';
-        }
-
-        async function submitNewItem() {
-            const name = document.getElementById('newName').value;
-            const price = document.getElementById('newPrice').value;
-            const category = document.getElementById('newCategory').value;
-            const fileInput = document.getElementById('newFile');
-
-            if (!name || !price || !fileInput.files[0]) {
-                alert("入力が不足しています");
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('name', name);
-            formData.append('price', price);
-            formData.append('category', category);
-            formData.append('file', fileInput.files[0]);
-
-            try {
-                const res = await fetch('/items', { method: 'POST', body: formData });
-                if (res.ok) {
-                    alert("商品を登録しました！");
-                    location.reload();
-                } else {
-                    alert("登録に失敗しました");
-                }
-            } catch (e) { alert("接続エラー"); }
-        }
+        let itemsData = [];
 
         async function loadItems() {
             try {
                 const response = await fetch('/items');
-                const items = await response.json();
-                const grid = document.getElementById('itemGrid');
-                grid.innerHTML = '';
-                items.forEach(item => {
-                    const imgSrc = item.image_url ? item.image_url : 'data:image/svg+xml;...';
+                itemsData = await response.json();
+                renderTabsAndContents();
+            } catch (error) { 
+                console.error(error); 
+                document.getElementById('tabsContainer').innerHTML = "<p style='color:red;'>通信エラー</p>";
+            }
+        }
+
+        function renderTabsAndContents() {
+            const tabsContainer = document.getElementById('tabsContainer');
+            const contentsContainer = document.getElementById('tabContentsContainer');
+            tabsContainer.innerHTML = '';
+            contentsContainer.innerHTML = '';
+
+            // カテゴリの一覧を作成（重複排除）
+            const categories = [...new Set(itemsData.map(item => item.category || '一般'))];
+
+            categories.forEach((category, index) => {
+                // タブボタン作成
+                const btn = document.createElement('button');
+                btn.className = `tab-btn ${index === 0 ? 'active' : ''}`;
+                btn.textContent = category;
+                btn.onclick = () => switchTab(category);
+                tabsContainer.appendChild(btn);
+
+                // タブの中身（グリッド）作成
+                const content = document.createElement('div');
+                content.id = `tab-${category}`;
+                content.className = `tab-content ${index === 0 ? 'active' : ''}`;
+                
+                const grid = document.createElement('div');
+                grid.className = 'item-grid';
+
+                const categoryItems = itemsData.filter(i => (i.category || '一般') === category);
+                categoryItems.forEach(item => {
+                    const imgSrc = item.image_url ? item.image_url : 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2280%22%20height%3D%2280%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23ddd%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2212%22%20text-anchor%3D%22middle%22%20fill%3D%22%23888%22%20dy%3D%22.3em%22%3ENo%20Image%3C%2Ftext%3E%3C%2Fsvg%3E';
                     const card = document.createElement('div');
                     card.className = 'item-card';
                     card.onclick = () => addItem(item.name, item.price);
@@ -117,7 +113,74 @@
                     `;
                     grid.appendChild(card);
                 });
-            } catch (error) { console.error(error); }
+                
+                content.appendChild(grid);
+                contentsContainer.appendChild(content);
+            });
+
+            // 最後に「レジ操作」タブを追加
+            const opsBtn = document.createElement('button');
+            opsBtn.className = `tab-btn`;
+            opsBtn.textContent = "⚙️ レジ操作";
+            opsBtn.onclick = () => switchTab('operations');
+            tabsContainer.appendChild(opsBtn);
+
+            const opsContent = document.createElement('div');
+            opsContent.id = `tab-operations`;
+            opsContent.className = `tab-content`;
+            opsContent.innerHTML = `
+                <button class="special-btn" onclick="addCustomItem()">＋ 金額を手動で入力する</button>
+                <div id="addForm">
+                    <h3>商品の新規追加</h3>
+                    <input type="text" id="newName" placeholder="商品名（例：レジン金）"><br>
+                    <input type="number" id="newPrice" placeholder="価格（例：500）"><br>
+                    <input type="text" id="newCategory" placeholder="カテゴリ（例：小物）" value="一般"><br>
+                    画像：<input type="file" id="newFile" accept="image/*"><br>
+                    <button onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:10px;">登録実行</button>
+                </div>
+            `;
+            contentsContainer.appendChild(opsContent);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if(btn.textContent === tabId || (tabId === 'operations' && btn.textContent === "⚙️ レジ操作")) {
+                    btn.classList.add('active');
+                }
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+        }
+
+        async function submitNewItem() {
+            const name = document.getElementById('newName').value;
+            const price = document.getElementById('newPrice').value;
+            const fileInput = document.getElementById('newFile');
+
+            if (!name || !price || !fileInput.files[0]) {
+                alert("入力と画像をすべて選択してください！");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('price', price);
+            formData.append('category', document.getElementById('newCategory').value || '一般');
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const res = await fetch('/items', { method: 'POST', body: formData });
+                if (res.ok) {
+                    alert("商品を登録しました！");
+                    location.reload();
+                } else {
+                    const err = await res.json();
+                    alert(`エラー: ${err.detail || "登録失敗"}`);
+                }
+            } catch (e) { alert("通信エラー"); }
         }
 
         function addItem(itemName, price) {
@@ -129,7 +192,7 @@
         function addCustomItem() {
             const priceStr = prompt("金額を半角数字で入力してください:");
             if (!priceStr || isNaN(priceStr)) return;
-            const name = prompt("商品名や備考:", "カスタム金額");
+            const name = prompt("商品名や備考:", "手動入力");
             if (!name) return;
             addItem(name, parseInt(priceStr, 10));
         }
@@ -165,41 +228,10 @@
                     body: JSON.stringify(payload)
                 });
                 if (response.ok) { alert(`売上 ¥${finalTotal} を記録しました！`); clearCart(); }
-            } catch (error) { alert("接続エラー"); }
+            } catch (error) { alert("通信エラー"); }
         }
 
         window.onload = loadItems;
-        
-
-
-
-        async function submitNewItem() {
-            const name = document.getElementById('newName').value;
-            const price = document.getElementById('newPrice').value;
-            const fileInput = document.getElementById('newFile');
-
-            if (!name || !price || !fileInput.files[0]) {
-                alert("入力と画像をすべて選択してください！");
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('name', name);
-            formData.append('price', price);
-            formData.append('category', document.getElementById('newCategory').value);
-            formData.append('file', fileInput.files[0]);
-
-            try {
-                const res = await fetch('/items', { method: 'POST', body: formData });
-                if (res.ok) {
-                    alert("商品を登録しました！");
-                    location.reload();
-                } else {
-                    const err = await res.json();
-                    alert(`エラー: ${err.detail || "登録に失敗しました。Supabaseの権限設定を確認してください。"}`);
-                }
-            } catch (e) { alert("サーバーに接続できません"); }
-        }
     </script>
 </body>
 </html>

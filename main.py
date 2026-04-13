@@ -19,15 +19,28 @@ security = HTTPBasic()
 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_ANON_KEY")
+
+if not supabase_url or not supabase_key:
+    missing = []
+    if not supabase_url: missing.append("SUPABASE_URL")
+    if not supabase_key: missing.append("SUPABASE_ANON_KEY")
+    error_msg = f"【致命的エラー】環境変数が不足しています: {', '.join(missing)}"
+    print(error_msg)
+    raise ValueError(error_msg)
+
 supabase: Client = create_client(supabase_url, supabase_key)
 
-# 幹部用のパスワード設定
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "password123" # 当日に変更してください
+ADMIN_PASSWORD = "password123"
 
 def get_admin_user(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != ADMIN_USERNAME or credentials.password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        # 【修正】認証失敗時に再度ダイアログを出す魔法のヘッダーを追加
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="認証に失敗しました",
+            headers={"WWW-Authenticate": "Basic"},
+        )
     return credentials.username
 
 def get_db():
@@ -42,7 +55,6 @@ class SaleCreate(BaseModel):
 class ItemUpdate(BaseModel):
     price: int
 
-# --- 一般向けAPI ---
 @app.get("/items")
 def read_items(db: Session = Depends(get_db)):
     return db.query(database.Item).order_by(database.Item.id).all()
@@ -59,7 +71,6 @@ async def create_item(
         file_ext = file.filename.split(".")[-1]
         file_name = f"{uuid.uuid4()}.{file_ext}"
         file_content = await file.read()
-        # Storageに保存
         supabase.storage.from_("item-images").upload(
             path=file_name,
             file=file_content,
@@ -82,7 +93,6 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Recorded"}
 
-# --- 幹部向けAPI ---
 @app.get("/sales")
 def read_sales(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     return db.query(database.Sale).all()

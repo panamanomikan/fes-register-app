@@ -2,57 +2,90 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>売上管理ダッシュボード</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f0f2f5; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .stat-value { font-size: 1.8em; font-weight: bold; color: #1a73e8; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        body { font-family: sans-serif; padding: 10px; background-color: #f0f2f5; margin: 0; font-size: 16px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-value { font-size: 1.5em; font-weight: bold; color: #1a73e8; }
+        
+        /* スマホ対応：テーブルを横スクロール可能に */
+        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; min-width: 500px; /* 最低幅を確保して崩れを防ぐ */ }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #ddd; font-size: 0.95em; }
         th { background-color: #f8f9fa; }
-        .refresh-btn { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+        
+        /* 管理画面のタブスタイル */
+        .tabs { display: flex; border-bottom: 2px solid #1a73e8; margin-bottom: 15px; }
+        .tab-btn { flex: 1; padding: 12px; background: #e8f0fe; border: none; font-size: 1.1em; cursor: pointer; color: #1a73e8; font-weight: bold; }
+        .tab-btn.active { background: #1a73e8; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        input[type="number"] { font-size: 16px; width: 60px; padding: 5px; }
+        .refresh-btn { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 15px; font-size: 1.1em;}
     </style>
 </head>
 <body>
-    <div style="max-width: 800px; margin: 0 auto;">
-        <h1>売上管理ダッシュボード（幹部用）</h1>
+    <div class="container">
+        <h1 style="font-size: 1.3em; text-align: center;">売上管理ダッシュボード（幹部用）</h1>
         
         <div class="stat-grid">
-            <div class="card">
-                <p>総売上</p>
+            <div class="card" style="margin-bottom: 10px;">
+                <p style="margin:0;">総売上</p>
                 <div class="stat-value">¥<span id="totalRevenue">0</span></div>
             </div>
-            <div class="card">
-                <p>決済件数</p>
+            <div class="card" style="margin-bottom: 10px;">
+                <p style="margin:0;">決済件数</p>
                 <div class="stat-value"><span id="transactionCount">0</span>件</div>
             </div>
         </div>
 
-        <button class="refresh-btn" onclick="refreshAll()">最新の情報に更新</button>
+        <button class="refresh-btn" onclick="refreshAll()">🔄 最新の情報に更新</button>
 
-        <div class="card">
-            <h3>商品管理（削除・価格変更）</h3>
-            <table id="itemsTable">
-                <thead>
-                    <tr><th>商品名</th><th>カテゴリ</th><th>現在の価格</th><th>操作</th></tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchAdminTab('products')" id="btn-products">📦 商品管理</button>
+            <button class="tab-btn" onclick="switchAdminTab('history')" id="btn-history">🧾 取引履歴</button>
         </div>
 
-        <div class="card">
-            <h3>最近の取引履歴</h3>
-            <table id="salesTable">
-                <thead>
-                    <tr><th>時刻 (JST)</th><th>購入内訳</th><th>金額</th></tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+        <div id="tab-products" class="tab-content active card">
+            <h3 style="margin-top:0;">商品管理（削除・価格変更）</h3>
+            <div class="table-responsive">
+                <table id="itemsTable">
+                    <thead>
+                        <tr><th>商品名</th><th>カテゴリ</th><th>価格</th><th>操作</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-history" class="tab-content card">
+            <h3 style="margin-top:0;">最近の取引履歴</h3>
+            <div class="table-responsive">
+                <table id="salesTable">
+                    <thead>
+                        <tr><th>時刻 (JST)</th><th>購入内訳</th><th>金額</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <script>
+        function switchAdminTab(tabId) {
+            document.getElementById('btn-products').classList.remove('active');
+            document.getElementById('btn-history').classList.remove('active');
+            document.getElementById('tab-products').classList.remove('active');
+            document.getElementById('tab-history').classList.remove('active');
+            
+            document.getElementById(`btn-${tabId}`).classList.add('active');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+        }
+
         async function loadDashboard() {
             const response = await fetch('/sales');
             const data = await response.json();
@@ -68,7 +101,7 @@
                 if (sale.items_json) {
                     try {
                         const itemsObj = JSON.parse(sale.items_json);
-                        itemsText = Object.entries(itemsObj).map(([name, count]) => `${name}×${count}`).join(', ');
+                        itemsText = Object.entries(itemsObj).map(([name, count]) => `${name}×${count}`).join('<br>');
                     } catch (e) { itemsText = "解析エラー"; }
                 }
                 tbody.innerHTML += `<tr><td>${timeStr}</td><td>${itemsText}</td><td>¥${sale.total_amount}</td></tr>`;
@@ -87,11 +120,12 @@
                     <tr>
                         <td>${item.name}</td>
                         <td>${item.category || '一般'}</td>
-                        <td>¥${item.price}</td>
                         <td>
-                            <input type="number" id="price-${item.id}" value="${item.price}" style="width:60px">
-                            <button onclick="updatePrice(${item.id})" style="background:#4caf50; color:white; border:none; padding:5px; border-radius:4px; cursor:pointer;">更新</button>
-                            <button onclick="deleteItem(${item.id})" style="background:#ff4d4d; color:white; border:none; padding:5px; border-radius:4px; cursor:pointer; margin-left:5px;">削除</button>
+                            <input type="number" id="price-${item.id}" value="${item.price}">
+                        </td>
+                        <td style="white-space: nowrap;">
+                            <button onclick="updatePrice(${item.id})" style="background:#4caf50; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">更新</button>
+                            <button onclick="deleteItem(${item.id})" style="background:#ff4d4d; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; margin-left:5px;">削除</button>
                         </td>
                     </tr>`;
             });
