@@ -6,26 +6,29 @@
     <title>売上管理ダッシュボード</title>
     <style>
         body { font-family: sans-serif; padding: 10px; background-color: #f0f2f5; margin: 0; font-size: 16px; }
-        .container { max-width: 800px; margin: 0 auto; }
+        .container { max-width: 900px; margin: 0 auto; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .stat-value { font-size: 1.5em; font-weight: bold; color: #1a73e8; }
         
-        /* スマホ対応：テーブルを横スクロール可能に */
         .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table { width: 100%; border-collapse: collapse; min-width: 500px; /* 最低幅を確保して崩れを防ぐ */ }
-        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #ddd; font-size: 0.95em; }
+        table { width: 100%; border-collapse: collapse; min-width: 700px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; font-size: 0.9em; vertical-align: middle; }
         th { background-color: #f8f9fa; }
         
-        /* 管理画面のタブスタイル */
         .tabs { display: flex; border-bottom: 2px solid #1a73e8; margin-bottom: 15px; }
         .tab-btn { flex: 1; padding: 12px; background: #e8f0fe; border: none; font-size: 1.1em; cursor: pointer; color: #1a73e8; font-weight: bold; }
         .tab-btn.active { background: #1a73e8; color: white; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        input[type="number"] { font-size: 16px; width: 60px; padding: 5px; }
+        input[type="text"], input[type="number"] { font-size: 14px; width: 80px; padding: 4px; box-sizing: border-box; }
+        .name-input { width: 120px !important; }
+        .file-input { width: 150px; font-size: 12px; }
+        
         .refresh-btn { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 15px; font-size: 1.1em;}
+        .update-btn { background:#4caf50; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; margin-bottom: 5px; width: 100%;}
+        .delete-btn { background:#ff4d4d; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; width: 100%;}
     </style>
 </head>
 <body>
@@ -51,11 +54,19 @@
         </div>
 
         <div id="tab-products" class="tab-content active card">
-            <h3 style="margin-top:0;">商品管理（削除・価格変更）</h3>
+            <h3 style="margin-top:0;">商品管理（全項目の編集）</h3>
+            <p style="font-size: 0.8em; color: #666;">※画像を新しく選ぶと上書きされます。選ばなければ元のままです。</p>
             <div class="table-responsive">
                 <table id="itemsTable">
                     <thead>
-                        <tr><th>商品名</th><th>カテゴリ</th><th>価格</th><th>操作</th></tr>
+                        <tr>
+                            <th>画像</th>
+                            <th>商品名 / カテゴリ</th>
+                            <th>定価</th>
+                            <th>セール価格 / 有効化</th>
+                            <th>画像変更</th>
+                            <th>操作</th>
+                        </tr>
                     </thead>
                     <tbody></tbody>
                 </table>
@@ -67,7 +78,7 @@
             <div class="table-responsive">
                 <table id="salesTable">
                     <thead>
-                        <tr><th>時刻 (JST)</th><th>購入内訳</th><th>金額</th></tr>
+                        <tr><th>時刻 (JST)</th><th>購入内訳 (単価)</th><th>合計金額</th></tr>
                     </thead>
                     <tbody></tbody>
                 </table>
@@ -95,16 +106,28 @@
             data.reverse().forEach(sale => {
                 total += sale.total_amount;
                 const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
-                const date = new Date(dateStr);
-                const timeStr = date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                const timeStr = new Date(dateStr).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                
                 let itemsText = "-";
                 if (sale.items_json) {
                     try {
                         const itemsObj = JSON.parse(sale.items_json);
-                        itemsText = Object.entries(itemsObj).map(([name, count]) => `${name}×${count}`).join('<br>');
+                        let lines = [];
+                        for (const [name, val] of Object.entries(itemsObj)) {
+                            // 旧データ互換性（数字のみの場合）
+                            if (typeof val === 'number') {
+                                lines.push(`${name} × ${val}`);
+                            } else {
+                                // 新データ（価格とセール情報を持つ）
+                                const colorStyle = val.is_sale ? 'color: red; font-weight: bold;' : '';
+                                const tag = val.is_sale ? '[SALE] ' : '';
+                                lines.push(`<span style="${colorStyle}">${tag}${name}</span> × ${val.quantity} (¥${val.price})`);
+                            }
+                        }
+                        itemsText = lines.join('<br>');
                     } catch (e) { itemsText = "解析エラー"; }
                 }
-                tbody.innerHTML += `<tr><td>${timeStr}</td><td>${itemsText}</td><td>¥${sale.total_amount}</td></tr>`;
+                tbody.innerHTML += `<tr><td>${timeStr}</td><td>${itemsText}</td><td style="font-weight:bold;">¥${sale.total_amount}</td></tr>`;
             });
             document.getElementById('totalRevenue').textContent = total.toLocaleString();
             document.getElementById('transactionCount').textContent = data.length;
@@ -116,36 +139,59 @@
             const tbody = document.querySelector('#itemsTable tbody');
             tbody.innerHTML = ''; 
             items.forEach(item => {
+                const imgSrc = item.image_url || 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23ddd%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2210%22%20text-anchor%3D%22middle%22%20fill%3D%22%23888%22%20dy%3D%22.3em%22%3ENo%3C%2Ftext%3E%3C%2Fsvg%3E';
+                const salePrice = item.sale_price !== null ? item.sale_price : '';
+                const isChecked = item.is_sale ? 'checked' : '';
+
                 tbody.innerHTML += `
                     <tr>
-                        <td>${item.name}</td>
-                        <td>${item.category || '一般'}</td>
+                        <td><img src="${imgSrc}" width="40" height="40" style="object-fit:cover; border-radius:4px;"></td>
                         <td>
-                            <input type="number" id="price-${item.id}" value="${item.price}">
+                            <input type="text" id="name-${item.id}" value="${item.name}" class="name-input" placeholder="商品名"><br>
+                            <input type="text" id="cat-${item.id}" value="${item.category || ''}" class="name-input" placeholder="カテゴリ" style="margin-top:4px;">
                         </td>
-                        <td style="white-space: nowrap;">
-                            <button onclick="updatePrice(${item.id})" style="background:#4caf50; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">更新</button>
-                            <button onclick="deleteItem(${item.id})" style="background:#ff4d4d; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; margin-left:5px;">削除</button>
+                        <td><input type="number" id="price-${item.id}" value="${item.price}"></td>
+                        <td>
+                            <input type="number" id="sale-price-${item.id}" value="${salePrice}" placeholder="未設定"><br>
+                            <label style="font-size:0.8em; margin-top:4px; display:inline-block;">
+                                <input type="checkbox" id="is-sale-${item.id}" ${isChecked}> セール有効
+                            </label>
+                        </td>
+                        <td><input type="file" id="file-${item.id}" class="file-input" accept="image/*"></td>
+                        <td>
+                            <button class="update-btn" onclick="updateItemFull(${item.id})">更新</button>
+                            <button class="delete-btn" onclick="deleteItem(${item.id})">削除</button>
                         </td>
                     </tr>`;
             });
         }
 
-        async function updatePrice(itemId) {
-            const newPrice = document.getElementById(`price-${itemId}`).value;
-            await fetch(`/items/${itemId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ price: parseInt(newPrice) })
-            });
-            alert("価格を更新しました");
-            loadAdminItems();
+        async function updateItemFull(itemId) {
+            const formData = new FormData();
+            formData.append('name', document.getElementById(`name-${itemId}`).value);
+            formData.append('category', document.getElementById(`cat-${itemId}`).value || '一般');
+            formData.append('price', document.getElementById(`price-${itemId}`).value);
+            
+            const salePrice = document.getElementById(`sale-price-${itemId}`).value;
+            if (salePrice) formData.append('sale_price', salePrice);
+            
+            formData.append('is_sale', document.getElementById(`is-sale-${itemId}`).checked);
+            
+            const fileInput = document.getElementById(`file-${itemId}`);
+            if (fileInput.files.length > 0) {
+                formData.append('file', fileInput.files[0]);
+            }
+
+            try {
+                const response = await fetch(`/items/${itemId}`, { method: 'PUT', body: formData });
+                if (response.ok) { alert("商品情報を更新しました"); loadAdminItems(); }
+                else { alert("更新エラー"); }
+            } catch (e) { alert("通信エラー"); }
         }
 
         async function deleteItem(itemId) {
-            if (!confirm("本当に削除しますか？売上データには影響しません。")) return;
+            if (!confirm("本当に削除しますか？")) return;
             await fetch(`/items/${itemId}`, { method: 'DELETE' });
-            alert("削除しました");
             loadAdminItems();
         }
 

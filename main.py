@@ -15,18 +15,13 @@ load_dotenv()
 database.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_ANON_KEY")
 
 if not supabase_url or not supabase_key:
-    missing = []
-    if not supabase_url: missing.append("SUPABASE_URL")
-    if not supabase_key: missing.append("SUPABASE_ANON_KEY")
-    error_msg = f"【致命的エラー】環境変数が不足しています: {', '.join(missing)}"
-    print(error_msg)
-    raise ValueError(error_msg)
+    raise ValueError("【致命的エラー】環境変数が不足しています")
 
 supabase: Client = create_client(supabase_url, supabase_key)
 
@@ -34,11 +29,10 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "password123"
 
 def get_admin_user(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != ADMIN_USERNAME or credentials.password != ADMIN_PASSWORD:
-        # 【修正】認証失敗時に再度ダイアログを出す魔法のヘッダーを追加
+    if credentials is None or credentials.username != ADMIN_USERNAME or credentials.password != ADMIN_PASSWORD:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="認証に失敗しました",
+            detail="認証が必要です",
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
@@ -51,9 +45,6 @@ def get_db():
 class SaleCreate(BaseModel):
     total_amount: int
     items_json: Optional[str] = None
-
-class ItemUpdate(BaseModel):
-    price: int
 
 @app.get("/items")
 def read_items(db: Session = Depends(get_db)):
@@ -72,9 +63,7 @@ async def create_item(
         file_name = f"{uuid.uuid4()}.{file_ext}"
         file_content = await file.read()
         supabase.storage.from_("item-images").upload(
-            path=file_name,
-            file=file_content,
-            file_options={"content-type": file.content_type}
+            path=file_name, file=file_content, file_options={"content-type": file.content_type}
         )
         image_url = supabase.storage.from_("item-images").get_public_url(file_name)
         
@@ -83,8 +72,51 @@ async def create_item(
         db.commit()
         return {"message": "Success"}
     except Exception as e:
-        print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# 【修正】画像も含めて商品情報をすべて変更できるAPI
+@app.put("/items/{item_id}")
+async def update_item_full(
+    item_id: int,
+    name: str = Form(...),
+    price: int = Form(...),
+    category: str = Form("一般"),
+    sale_price: Optional[int] = Form(None),
+    is_sale: bool = Form(False),
+    file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    admin: str = Depends(get_admin_user)
+):
+    db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
+    if not db_item: return {"error": "NotFound"}
+
+    # 情報の更新
+    db_item.name = name
+    db_item.price = price
+    db_item.category = category
+    db_item.sale_price = sale_price
+    db_item.is_sale = is_sale
+
+    # 画像が送られてきた場合のみ画像を更新
+    if file and file.filename:
+        file_ext = file.filename.split(".")[-1]
+        file_name = f"{uuid.uuid4()}.{file_ext}"
+        file_content = await file.read()
+        supabase.storage.from_("item-images").upload(
+            path=file_name, file=file_content, file_options={"content-type": file.content_type}
+        )
+        db_item.image_url = supabase.storage.from_("item-images").get_public_url(file_name)
+
+    db.commit()
+    return {"message": "Updated"}
+
+@app.delete("/items/{item_id}")
+def delete_item(item_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
+    if not db_item: return {"error": "NotFound"}
+    db.delete(db_item)
+    db.commit()
+    return {"message": "Deleted"}
 
 @app.post("/sales")
 def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
@@ -97,27 +129,8 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
 def read_sales(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     return db.query(database.Sale).all()
 
-@app.put("/items/{item_id}")
-def update_item_price(item_id: int, item_update: ItemUpdate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
-    if not db_item: return {"error": "NotFound"}
-    db_item.price = item_update.price
-    db.commit()
-    return {"message": "Updated"}
-
-@app.delete("/items/{item_id}")
-def delete_item(item_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
-    if not db_item: return {"error": "NotFound"}
-    db.delete(db_item)
-    db.commit()
-    return {"message": "Deleted"}
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 @app.get("/")
 def read_root(): return FileResponse("static/index.html")
-
 @app.get("/admin")
-def read_dashboard(admin: str = Depends(get_admin_user)):
-    return FileResponse("static/dashboard.html")
+def read_dashboard(admin: str = Depends(get_admin_user)): return FileResponse("static/dashboard.html")
