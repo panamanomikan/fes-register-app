@@ -22,13 +22,19 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        input[type="text"], input[type="number"] { font-size: 14px; width: 80px; padding: 4px; box-sizing: border-box; }
+        input[type="text"], input[type="number"] { font-size: 14px; width: 80px; padding: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;}
         .name-input { width: 120px !important; }
         .file-input { width: 150px; font-size: 12px; }
         
         .refresh-btn { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 15px; font-size: 1.1em;}
-        .update-btn { background:#4caf50; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; margin-bottom: 5px; width: 100%;}
         .delete-btn { background:#ff4d4d; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; width: 100%;}
+        
+        /* 一括保存ボタン（目立つように） */
+        .save-all-btn { width: 100%; padding: 15px; background: #e91e63; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1.2em; margin-top: 15px; display: none; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+        
+        /* 編集された行をわかりやすく */
+        tr.dirty-row { background-color: #fff3e0; }
     </style>
 </head>
 <body>
@@ -49,13 +55,13 @@
         <button class="refresh-btn" onclick="refreshAll()">🔄 最新の情報に更新</button>
 
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchAdminTab('products')" id="btn-products">📦 商品管理</button>
+            <button class="tab-btn active" onclick="switchAdminTab('products')" id="btn-products">📦 商品一括管理</button>
             <button class="tab-btn" onclick="switchAdminTab('history')" id="btn-history">🧾 取引履歴</button>
         </div>
 
         <div id="tab-products" class="tab-content active card">
-            <h3 style="margin-top:0;">商品管理（全項目の編集）</h3>
-            <p style="font-size: 0.8em; color: #666;">※画像を新しく選ぶと上書きされます。選ばなければ元のままです。</p>
+            <h3 style="margin-top:0;">商品一括管理</h3>
+            <p style="font-size: 0.8em; color: #666;">内容を変更すると、表の下に「保存ボタン」が現れます。</p>
             <div class="table-responsive">
                 <table id="itemsTable">
                     <thead>
@@ -65,12 +71,13 @@
                             <th>定価</th>
                             <th>セール価格 / 有効化</th>
                             <th>画像変更</th>
-                            <th>操作</th>
+                            <th>削除</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                 </table>
             </div>
+            <button id="saveChangesBtn" class="save-all-btn" onclick="saveAllChanges()">⚠️ 変更をすべて保存する</button>
         </div>
 
         <div id="tab-history" class="tab-content card">
@@ -87,7 +94,38 @@
     </div>
 
     <script>
+        // 【追加】変更を追跡する仕組み
+        let dirtyItems = new Set();
+        let isDirty = false;
+
+        function markDirty(itemId) {
+            dirtyItems.add(itemId);
+            isDirty = true;
+            document.getElementById(`row-${itemId}`).classList.add('dirty-row');
+            document.getElementById('saveChangesBtn').style.display = 'block';
+        }
+
+        // 【追加】ページを閉じようとした・リロードしようとした時の警告
+        window.addEventListener('beforeunload', function (e) {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = ''; // ブラウザ標準の警告文を表示
+            }
+        });
+
+        // タブ切り替え時の警告
         function switchAdminTab(tabId) {
+            if (isDirty) {
+                if (!confirm("保存されていない変更があります。破棄して移動しますか？")) {
+                    return; // キャンセルされたら移動しない
+                }
+                // 破棄に同意した場合はリセット
+                isDirty = false;
+                dirtyItems.clear();
+                document.getElementById('saveChangesBtn').style.display = 'none';
+                loadAdminItems(); // データを元に戻す
+            }
+
             document.getElementById('btn-products').classList.remove('active');
             document.getElementById('btn-history').classList.remove('active');
             document.getElementById('tab-products').classList.remove('active');
@@ -114,20 +152,26 @@
                         const itemsObj = JSON.parse(sale.items_json);
                         let lines = [];
                         for (const [name, val] of Object.entries(itemsObj)) {
-                            // 旧データ互換性（数字のみの場合）
+                            // 旧データ（数値のみ）の場合
                             if (typeof val === 'number') {
                                 lines.push(`${name} × ${val}`);
                             } else {
-                                // 新データ（価格とセール情報を持つ）
-                                const colorStyle = val.is_sale ? 'color: red; font-weight: bold;' : '';
+                                // 新データ（価格とセール情報を持つ）の場合
+                                let priceHtml = `¥${val.price}`;
+                                if (val.is_sale) {
+                                    const origHtml = val.original_price ? `<span style="text-decoration:line-through;color:#999;font-size:0.85em;margin-right:4px;">¥${val.original_price}</span>` : '';
+                                    priceHtml = `${origHtml}<span style="color:red;font-weight:bold;">¥${val.price}</span>`;
+                                }
+                                
+                                const nameStyle = val.is_sale ? 'color: red; font-weight: bold;' : '';
                                 const tag = val.is_sale ? '[SALE] ' : '';
-                                lines.push(`<span style="${colorStyle}">${tag}${name}</span> × ${val.quantity} (¥${val.price})`);
+                                lines.push(`<span style="${nameStyle}">${tag}${name}</span> × ${val.quantity} (${priceHtml})`);
                             }
                         }
                         itemsText = lines.join('<br>');
                     } catch (e) { itemsText = "解析エラー"; }
                 }
-                tbody.innerHTML += `<tr><td>${timeStr}</td><td>${itemsText}</td><td style="font-weight:bold;">¥${sale.total_amount}</td></tr>`;
+                tbody.innerHTML += `<tr><td style="font-size:0.85em;">${timeStr}</td><td>${itemsText}</td><td style="font-weight:bold;">¥${sale.total_amount}</td></tr>`;
             });
             document.getElementById('totalRevenue').textContent = total.toLocaleString();
             document.getElementById('transactionCount').textContent = data.length;
@@ -143,50 +187,74 @@
                 const salePrice = item.sale_price !== null ? item.sale_price : '';
                 const isChecked = item.is_sale ? 'checked' : '';
 
+                // すべてのinputに oninput または onchange で markDirty を仕掛ける
                 tbody.innerHTML += `
-                    <tr>
+                    <tr id="row-${item.id}">
                         <td><img src="${imgSrc}" width="40" height="40" style="object-fit:cover; border-radius:4px;"></td>
                         <td>
-                            <input type="text" id="name-${item.id}" value="${item.name}" class="name-input" placeholder="商品名"><br>
-                            <input type="text" id="cat-${item.id}" value="${item.category || ''}" class="name-input" placeholder="カテゴリ" style="margin-top:4px;">
+                            <input type="text" id="name-${item.id}" value="${item.name}" class="name-input" placeholder="商品名" oninput="markDirty(${item.id})"><br>
+                            <input type="text" id="cat-${item.id}" value="${item.category || ''}" class="name-input" placeholder="カテゴリ" style="margin-top:4px;" oninput="markDirty(${item.id})">
                         </td>
-                        <td><input type="number" id="price-${item.id}" value="${item.price}"></td>
+                        <td><input type="number" id="price-${item.id}" value="${item.price}" oninput="markDirty(${item.id})"></td>
                         <td>
-                            <input type="number" id="sale-price-${item.id}" value="${salePrice}" placeholder="未設定"><br>
+                            <input type="number" id="sale-price-${item.id}" value="${salePrice}" placeholder="未設定" oninput="markDirty(${item.id})"><br>
                             <label style="font-size:0.8em; margin-top:4px; display:inline-block;">
-                                <input type="checkbox" id="is-sale-${item.id}" ${isChecked}> セール有効
+                                <input type="checkbox" id="is-sale-${item.id}" ${isChecked} onchange="markDirty(${item.id})"> セール有効
                             </label>
                         </td>
-                        <td><input type="file" id="file-${item.id}" class="file-input" accept="image/*"></td>
+                        <td><input type="file" id="file-${item.id}" class="file-input" accept="image/*" onchange="markDirty(${item.id})"></td>
                         <td>
-                            <button class="update-btn" onclick="updateItemFull(${item.id})">更新</button>
                             <button class="delete-btn" onclick="deleteItem(${item.id})">削除</button>
                         </td>
                     </tr>`;
             });
         }
 
-        async function updateItemFull(itemId) {
-            const formData = new FormData();
-            formData.append('name', document.getElementById(`name-${itemId}`).value);
-            formData.append('category', document.getElementById(`cat-${itemId}`).value || '一般');
-            formData.append('price', document.getElementById(`price-${itemId}`).value);
+        // 【追加】一括保存関数
+        async function saveAllChanges() {
+            if (dirtyItems.size === 0) return;
             
-            const salePrice = document.getElementById(`sale-price-${itemId}`).value;
-            if (salePrice) formData.append('sale_price', salePrice);
-            
-            formData.append('is_sale', document.getElementById(`is-sale-${itemId}`).checked);
-            
-            const fileInput = document.getElementById(`file-${itemId}`);
-            if (fileInput.files.length > 0) {
-                formData.append('file', fileInput.files[0]);
-            }
+            const btn = document.getElementById('saveChangesBtn');
+            btn.textContent = '保存中...';
+            btn.style.animation = 'none';
+            btn.disabled = true;
+
+            // 変更された項目だけを並列でサーバーに送信する
+            const promises = Array.from(dirtyItems).map(async (itemId) => {
+                const formData = new FormData();
+                formData.append('name', document.getElementById(`name-${itemId}`).value);
+                formData.append('category', document.getElementById(`cat-${itemId}`).value || '一般');
+                formData.append('price', document.getElementById(`price-${itemId}`).value);
+                
+                const salePrice = document.getElementById(`sale-price-${itemId}`).value;
+                if (salePrice) formData.append('sale_price', salePrice);
+                
+                formData.append('is_sale', document.getElementById(`is-sale-${itemId}`).checked);
+                
+                const fileInput = document.getElementById(`file-${itemId}`);
+                if (fileInput.files.length > 0) {
+                    formData.append('file', fileInput.files[0]);
+                }
+
+                return fetch(`/items/${itemId}`, { method: 'PUT', body: formData });
+            });
 
             try {
-                const response = await fetch(`/items/${itemId}`, { method: 'PUT', body: formData });
-                if (response.ok) { alert("商品情報を更新しました"); loadAdminItems(); }
-                else { alert("更新エラー"); }
-            } catch (e) { alert("通信エラー"); }
+                await Promise.all(promises); // 全ての送信が終わるまで待つ
+                alert("すべての変更を保存しました！");
+                isDirty = false;
+                dirtyItems.clear();
+                btn.style.display = 'none';
+                btn.textContent = '⚠️ 変更をすべて保存する';
+                btn.disabled = false;
+                btn.style.animation = 'pulse 1.5s infinite';
+                loadAdminItems();
+            } catch (e) {
+                alert("一部の保存に失敗しました。通信状況を確認してください。");
+                btn.textContent = '⚠️ 変更をすべて保存する';
+                btn.disabled = false;
+                btn.style.animation = 'pulse 1.5s infinite';
+            }
         }
 
         async function deleteItem(itemId) {
@@ -195,7 +263,14 @@
             loadAdminItems();
         }
 
-        function refreshAll() { loadDashboard(); loadAdminItems(); }
+        function refreshAll() { 
+            if(isDirty && !confirm("変更を破棄してリロードしますか？")) return;
+            isDirty = false;
+            dirtyItems.clear();
+            document.getElementById('saveChangesBtn').style.display = 'none';
+            loadDashboard(); 
+            loadAdminItems(); 
+        }
         window.onload = refreshAll;
     </script>
 </body>

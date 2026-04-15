@@ -8,6 +8,7 @@
         body { font-family: sans-serif; padding: 10px; background-color: #f9f9f9; margin: 0; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h1 { font-size: 1.5em; text-align: center; margin-top: 0; margin-bottom: 10px; }
+        
         input[type="text"], input[type="number"], input[type="file"] { font-size: 16px; width: 90%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; }
         
         .tabs { display: flex; overflow-x: auto; border-bottom: 2px solid #ddd; margin-bottom: 15px; padding-bottom: 5px; white-space: nowrap; -webkit-overflow-scrolling: touch; }
@@ -23,7 +24,6 @@
         .item-name { font-weight: bold; font-size: 1.1em; margin: 5px 0; }
         .item-price { color: #333; font-weight: bold; }
         
-        /* セール表示用のスタイル */
         .sale-badge { position: absolute; top: 5px; right: 5px; background: red; color: white; padding: 2px 5px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
         .original-price { text-decoration: line-through; color: #999; font-size: 0.85em; margin-right: 5px; }
         .sale-price { color: #e91e63; font-weight: bold; font-size: 1.2em; }
@@ -36,6 +36,7 @@
         .action-btn { width: 100%; padding: 15px; font-size: 1.2em; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 10px; color: white; font-weight: bold; }
         .btn-clear { background-color: #9e9e9e; }
         .btn-checkout { background-color: #4caf50; }
+        
         #addForm { background: #f1f8ff; padding: 15px; border-radius: 8px; border: 1px solid #cce5ff; margin-bottom: 10px;}
     </style>
 </head>
@@ -67,7 +68,10 @@
                 const response = await fetch('/items');
                 itemsData = await response.json();
                 renderTabsAndContents();
-            } catch (error) { document.getElementById('tabsContainer').innerHTML = "<p style='color:red;'>通信エラー</p>"; }
+            } catch (error) { 
+                console.error(error); 
+                document.getElementById('tabsContainer').innerHTML = "<p style='color:red;'>通信エラー</p>";
+            }
         }
 
         function renderTabsAndContents() {
@@ -94,13 +98,11 @@
 
                 const categoryItems = itemsData.filter(i => (i.category || '一般') === category);
                 categoryItems.forEach(item => {
-                    // セール判定と価格表示の切り替え
                     const isSaleActive = item.is_sale && item.sale_price !== null;
                     const currentPrice = isSaleActive ? item.sale_price : item.price;
                     
                     let priceHtml = `<div class="item-price">¥${item.price}</div>`;
                     let badgeHtml = '';
-                    
                     if (isSaleActive) {
                         badgeHtml = `<div class="sale-badge">SALE</div>`;
                         priceHtml = `<div><span class="original-price">¥${item.price}</span><span class="sale-price">¥${item.sale_price}</span></div>`;
@@ -109,8 +111,9 @@
                     const imgSrc = item.image_url ? item.image_url : 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2280%22%20height%3D%2280%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23ddd%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2212%22%20text-anchor%3D%22middle%22%20fill%3D%22%23888%22%20dy%3D%22.3em%22%3ENo%20Image%3C%2Ftext%3E%3C%2Fsvg%3E';
                     const card = document.createElement('div');
                     card.className = 'item-card';
-                    // カートに「今の価格」と「セール中か」を渡す
-                    card.onclick = () => addItem(item.name, currentPrice, isSaleActive);
+                    
+                    // 【改修】定価(item.price)もカートに渡す
+                    card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price);
                     card.innerHTML = `
                         ${badgeHtml}
                         <img src="${imgSrc}" class="item-img">
@@ -164,8 +167,7 @@
             const fileInput = document.getElementById('newFile');
 
             if (!name || !price || !fileInput.files[0]) {
-                alert("入力と画像をすべて選択してください！");
-                return;
+                alert("入力と画像をすべて選択してください！"); return;
             }
 
             const formData = new FormData();
@@ -181,10 +183,10 @@
             } catch (e) { alert("通信エラー"); }
         }
 
-        // 引数に isSale を追加
-        function addItem(itemName, price, isSale = false) {
+        // 【改修】originalPrice を受け取るように変更
+        function addItem(itemName, price, isSale = false, originalPrice = null) {
             if (!cart[itemName]) {
-                cart[itemName] = { price: price, quantity: 0, is_sale: isSale };
+                cart[itemName] = { price: price, quantity: 0, is_sale: isSale, original_price: originalPrice };
             }
             cart[itemName].quantity += 1;
             updateDisplay();
@@ -195,7 +197,9 @@
             if (!priceStr || isNaN(priceStr)) return;
             const name = prompt("商品名や備考:", "手動入力");
             if (!name) return;
-            addItem(name, parseInt(priceStr, 10), false);
+            // 手動入力はセールではない扱いとし、定価と現在価格を同じにする
+            const p = parseInt(priceStr, 10);
+            addItem(name, p, false, p);
         }
 
         function clearCart() { cart = {}; updateDisplay(); }
@@ -207,8 +211,7 @@
             for (const [itemName, itemData] of Object.entries(cart)) {
                 currentTotal += itemData.price * itemData.quantity;
                 const li = document.createElement('li');
-                // セール品はカート内でも目立たせる（オプション）
-                const nameDisplay = itemData.is_sale ? `<span style="color:red;">${itemName} (セール)</span>` : itemName;
+                const nameDisplay = itemData.is_sale ? `<span style="color:red; font-weight:bold;">${itemName} (SALE)</span>` : itemName;
                 li.innerHTML = `${nameDisplay} × ${itemData.quantity} = ¥${itemData.price * itemData.quantity}`;
                 listElement.appendChild(li);
             }
@@ -220,11 +223,12 @@
             let itemsToSave = {};
             for (const [itemName, itemData] of Object.entries(cart)) {
                 finalTotal += itemData.price * itemData.quantity;
-                // 新しいJSONフォーマット（個数、販売価格、セール判定をすべて保存）
+                // 【改修】original_priceも一緒にデータベースに保存する
                 itemsToSave[itemName] = {
                     quantity: itemData.quantity,
                     price: itemData.price,
-                    is_sale: itemData.is_sale
+                    is_sale: itemData.is_sale,
+                    original_price: itemData.original_price
                 };
             }
             if (finalTotal === 0) return;
