@@ -8,45 +8,36 @@
         body { font-family: sans-serif; padding: 10px; background-color: #f9f9f9; margin: 0; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h1 { font-size: 1.5em; text-align: center; margin-top: 0; margin-bottom: 10px; }
-        
-        input[type="text"], input[type="number"], input[type="file"] { font-size: 16px; width: 90%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; }
-        
+        input[type="text"], input[type="number"], input[type="file"], select { font-size: 16px; width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         .tabs { display: flex; overflow-x: auto; border-bottom: 2px solid #ddd; margin-bottom: 15px; padding-bottom: 5px; white-space: nowrap; -webkit-overflow-scrolling: touch; }
         .tab-btn { padding: 10px 15px; background: none; border: none; font-size: 1.1em; cursor: pointer; color: #666; font-weight: bold; }
         .tab-btn.active { color: #2196f3; border-bottom: 3px solid #2196f3; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-
         .item-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
         .item-card { background: #fff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; position: relative; }
         .item-card:active { background-color: #e0f7fa; border-color: #00bcd4; }
         .item-img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; background-color: #eeeeee; margin-bottom: 5px; }
         .item-name { font-weight: bold; font-size: 1.1em; margin: 5px 0; }
         .item-price { color: #333; font-weight: bold; }
-        
         .sale-badge { position: absolute; top: 5px; right: 5px; background: red; color: white; padding: 2px 5px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
         .original-price { text-decoration: line-through; color: #999; font-size: 0.85em; margin-right: 5px; }
         .sale-price { color: #e91e63; font-weight: bold; font-size: 1.2em; }
-
         .special-btn { width: 100%; padding: 15px; margin-bottom: 10px; font-size: 1.1em; border: 2px dashed #9c27b0; border-radius: 8px; background-color: #f3e5f5; color: #9c27b0; font-weight: bold; cursor: pointer; }
-        
         .cart { padding: 15px; background-color: #fff3e0; border-radius: 4px; margin-bottom: 15px; }
         #cartItemsList { margin: 10px 0; padding-left: 20px; font-size: 1.1em; color: #333; }
         .cart-total { font-size: 1.5em; font-weight: bold; text-align: right; margin: 0; color: #d32f2f; }
         .action-btn { width: 100%; padding: 15px; font-size: 1.2em; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 10px; color: white; font-weight: bold; }
         .btn-clear { background-color: #9e9e9e; }
         .btn-checkout { background-color: #4caf50; }
-        
         #addForm { background: #f1f8ff; padding: 15px; border-radius: 8px; border: 1px solid #cce5ff; margin-bottom: 10px;}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>学園祭レジ</h1>
-
         <div id="tabsContainer" class="tabs"><p>読み込み中...</p></div>
         <div id="tabContentsContainer"></div>
-
         <div class="cart">
             <p style="margin-top:0; font-weight:bold;">🛒 カートの中身:</p>
             <ul id="cartItemsList"></ul>
@@ -54,7 +45,6 @@
             <p>合計金額:</p>
             <p class="cart-total">¥<span id="totalDisplay">0</span></p>
         </div>
-
         <button class="action-btn btn-clear" onclick="clearCart()">カートを取消</button>
         <button class="action-btn btn-checkout" onclick="checkout()">会計確定</button>
     </div>
@@ -69,7 +59,6 @@
                 itemsData = await response.json();
                 renderTabsAndContents();
             } catch (error) { 
-                console.error(error); 
                 document.getElementById('tabsContainer').innerHTML = "<p style='color:red;'>通信エラー</p>";
             }
         }
@@ -79,7 +68,6 @@
             const contentsContainer = document.getElementById('tabContentsContainer');
             tabsContainer.innerHTML = '';
             contentsContainer.innerHTML = '';
-
             const categories = [...new Set(itemsData.map(item => item.category || '一般'))];
 
             categories.forEach((category, index) => {
@@ -92,157 +80,138 @@
                 const content = document.createElement('div');
                 content.id = `tab-${category}`;
                 content.className = `tab-content ${index === 0 ? 'active' : ''}`;
-                
                 const grid = document.createElement('div');
                 grid.className = 'item-grid';
 
-                const categoryItems = itemsData.filter(i => (i.category || '一般') === category);
-                categoryItems.forEach(item => {
+                itemsData.filter(i => (i.category || '一般') === category).forEach(item => {
                     const isSaleActive = item.is_sale && item.sale_price !== null;
                     const currentPrice = isSaleActive ? item.sale_price : item.price;
-                    
                     let priceHtml = `<div class="item-price">¥${item.price}</div>`;
-                    let badgeHtml = '';
+                    let badgeHtml = isSaleActive ? `<div class="sale-badge">SALE</div>` : '';
                     if (isSaleActive) {
-                        badgeHtml = `<div class="sale-badge">SALE</div>`;
                         priceHtml = `<div><span class="original-price">¥${item.price}</span><span class="sale-price">¥${item.sale_price}</span></div>`;
                     }
-
-                    const imgSrc = item.image_url ? item.image_url : 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2280%22%20height%3D%2280%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23ddd%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2212%22%20text-anchor%3D%22middle%22%20fill%3D%22%23888%22%20dy%3D%22.3em%22%3ENo%20Image%3C%2Ftext%3E%3C%2Fsvg%3E';
+                    const imgSrc = item.image_url || 'https://via.placeholder.com/80?text=No+Image';
                     const card = document.createElement('div');
                     card.className = 'item-card';
-                    
-                    // 【改修】定価(item.price)もカートに渡す
-                    card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price);
-                    card.innerHTML = `
-                        ${badgeHtml}
-                        <img src="${imgSrc}" class="item-img">
-                        <div class="item-name">${item.name}</div>
-                        ${priceHtml}
-                    `;
+                    card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.creator_id, item.material_fee, item.remarks);
+                    card.innerHTML = `${badgeHtml}<img src="${imgSrc}" class="item-img"><div class="item-name">${item.name}</div>${priceHtml}`;
                     grid.appendChild(card);
                 });
-                
                 content.appendChild(grid);
                 contentsContainer.appendChild(content);
             });
 
+            // ⚙️ 操作タブ
             const opsBtn = document.createElement('button');
             opsBtn.className = `tab-btn`;
-            opsBtn.textContent = "⚙️ レジ操作";
+            opsBtn.textContent = "⚙️ 商品登録";
             opsBtn.onclick = () => switchTab('operations');
             tabsContainer.appendChild(opsBtn);
-
             const opsContent = document.createElement('div');
             opsContent.id = `tab-operations`;
             opsContent.className = `tab-content`;
             opsContent.innerHTML = `
                 <button class="special-btn" onclick="addCustomItem()">＋ 金額を手動で入力する</button>
                 <div id="addForm">
-                    <h3>商品の新規追加</h3>
-                    <input type="text" id="newName" placeholder="商品名"><br>
-                    <input type="number" id="newPrice" placeholder="定価"><br>
-                    <input type="text" id="newCategory" placeholder="カテゴリ" value="一般"><br>
-                    画像：<input type="file" id="newFile" accept="image/*"><br>
-                    <button onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:10px;">登録実行</button>
-                </div>
-            `;
+                    <h3 style="margin-top:0;">商品の新規登録</h3>
+                    <input type="text" id="newName" placeholder="商品名">
+                    <input type="number" id="newPrice" placeholder="定価 (税込)">
+                    <input type="number" id="newMaterial" placeholder="材料費 (原価)">
+                    <input type="text" id="newCreator" placeholder="製作者 学籍番号">
+                    <input type="text" id="newCategory" placeholder="カテゴリ" value="一般">
+                    <input type="text" id="newRemarks" placeholder="備考 (例: 色違いなど)">
+                    画像：<input type="file" id="newFile" accept="image/*">
+                    <button onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:5px;">登録実行</button>
+                </div>`;
             contentsContainer.appendChild(opsContent);
         }
 
         function switchTab(tabId) {
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if(btn.textContent === tabId || (tabId === 'operations' && btn.textContent === "⚙️ レジ操作")) {
-                    btn.classList.add('active');
-                }
-            });
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(`tab-${tabId}`).classList.add('active');
+            const targetBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent === tabId || (tabId==='operations' && b.textContent==='⚙️ 商品登録'));
+            if(targetBtn) targetBtn.classList.add('active');
         }
 
         async function submitNewItem() {
-            const name = document.getElementById('newName').value;
-            const price = document.getElementById('newPrice').value;
-            const fileInput = document.getElementById('newFile');
-
-            if (!name || !price || !fileInput.files[0]) {
-                alert("入力と画像をすべて選択してください！"); return;
-            }
-
             const formData = new FormData();
-            formData.append('name', name);
-            formData.append('price', price);
+            formData.append('name', document.getElementById('newName').value);
+            formData.append('price', document.getElementById('newPrice').value);
+            formData.append('material_fee', document.getElementById('newMaterial').value || 0);
+            formData.append('creator_id', document.getElementById('newCreator').value || 'unknown');
             formData.append('category', document.getElementById('newCategory').value || '一般');
+            formData.append('remarks', document.getElementById('newRemarks').value || '');
+            const fileInput = document.getElementById('newFile');
+            if (!fileInput.files[0]) { alert("画像を選択してください"); return; }
             formData.append('file', fileInput.files[0]);
 
             try {
                 const res = await fetch('/items', { method: 'POST', body: formData });
-                if (res.ok) { alert("商品を登録しました！"); location.reload(); }
-                else { alert("登録失敗"); }
+                if (res.ok) { alert("登録しました"); location.reload(); }
             } catch (e) { alert("通信エラー"); }
         }
 
-        // 【改修】originalPrice を受け取るように変更
-        function addItem(itemName, price, isSale = false, originalPrice = null) {
-            if (!cart[itemName]) {
-                cart[itemName] = { price: price, quantity: 0, is_sale: isSale, original_price: originalPrice };
+        function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks) {
+            const key = `${itemName}_${price}`; // 価格が違う同名商品は別扱い
+            if (!cart[key]) {
+                cart[key] = { name: itemName, price: price, quantity: 0, is_sale: isSale, original_price: originalPrice, creator_id: creatorId, material_fee: materialFee, remarks: remarks };
             }
-            cart[itemName].quantity += 1;
+            cart[key].quantity += 1;
             updateDisplay();
         }
 
         function addCustomItem() {
-            const priceStr = prompt("金額を半角数字で入力してください:");
-            if (!priceStr || isNaN(priceStr)) return;
-            const name = prompt("商品名や備考:", "手動入力");
+            const price = prompt("金額を入力:");
+            if (!price || isNaN(price)) return;
+            const name = prompt("商品名:", "手動入力");
             if (!name) return;
-            // 手動入力はセールではない扱いとし、定価と現在価格を同じにする
-            const p = parseInt(priceStr, 10);
-            addItem(name, p, false, p);
+            addItem(name, parseInt(price), false, parseInt(price), 'manual', 0, '手動入力');
         }
 
         function clearCart() { cart = {}; updateDisplay(); }
 
         function updateDisplay() {
-            let currentTotal = 0;
-            const listElement = document.getElementById('cartItemsList');
-            listElement.innerHTML = ''; 
-            for (const [itemName, itemData] of Object.entries(cart)) {
-                currentTotal += itemData.price * itemData.quantity;
+            let total = 0;
+            const list = document.getElementById('cartItemsList');
+            list.innerHTML = ''; 
+            for (const key in cart) {
+                const item = cart[key];
+                total += item.price * item.quantity;
                 const li = document.createElement('li');
-                const nameDisplay = itemData.is_sale ? `<span style="color:red; font-weight:bold;">${itemName} (SALE)</span>` : itemName;
-                li.innerHTML = `${nameDisplay} × ${itemData.quantity} = ¥${itemData.price * itemData.quantity}`;
-                listElement.appendChild(li);
+                li.innerHTML = `${item.is_sale ? '<span style="color:red;">[SALE]</span>' : ''} ${item.name} × ${item.quantity} = ¥${item.price * item.quantity}`;
+                list.appendChild(li);
             }
-            document.getElementById('totalDisplay').textContent = currentTotal;
+            document.getElementById('totalDisplay').textContent = total;
         }
 
         async function checkout() {
-            let finalTotal = 0;
+            let total = 0;
             let itemsToSave = {};
-            for (const [itemName, itemData] of Object.entries(cart)) {
-                finalTotal += itemData.price * itemData.quantity;
-                // 【改修】original_priceも一緒にデータベースに保存する
-                itemsToSave[itemName] = {
-                    quantity: itemData.quantity,
-                    price: itemData.price,
-                    is_sale: itemData.is_sale,
-                    original_price: itemData.original_price
+            for (const key in cart) {
+                const item = cart[key];
+                total += item.price * item.quantity;
+                itemsToSave[item.name] = {
+                    quantity: item.quantity,
+                    price: item.price,
+                    is_sale: item.is_sale,
+                    original_price: item.original_price,
+                    creator_id: item.creator_id,
+                    material_fee: item.material_fee,
+                    remarks: item.remarks
                 };
             }
-            if (finalTotal === 0) return;
-            const payload = { total_amount: finalTotal, items_json: JSON.stringify(itemsToSave) };
+            if (total === 0) return;
             try {
-                const response = await fetch('/sales', {
+                const res = await fetch('/sales', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ total_amount: total, items_json: JSON.stringify(itemsToSave) })
                 });
-                if (response.ok) { alert(`売上 ¥${finalTotal} を記録しました！`); clearCart(); }
-            } catch (error) { alert("通信エラー"); }
+                if (res.ok) { alert("会計完了！"); clearCart(); }
+            } catch (e) { alert("エラー"); }
         }
-
         window.onload = loadItems;
     </script>
 </body>

@@ -8,33 +8,33 @@
         body { font-family: sans-serif; padding: 10px; background-color: #f0f2f5; margin: 0; font-size: 16px; }
         .container { max-width: 900px; margin: 0 auto; }
         .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .stat-value { font-size: 1.5em; font-weight: bold; color: #1a73e8; }
         
         .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table { width: 100%; border-collapse: collapse; min-width: 700px; }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
         th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; font-size: 0.9em; vertical-align: middle; }
         th { background-color: #f8f9fa; }
         
-        .tabs { display: flex; border-bottom: 2px solid #1a73e8; margin-bottom: 15px; }
-        .tab-btn { flex: 1; padding: 12px; background: #e8f0fe; border: none; font-size: 1.1em; cursor: pointer; color: #1a73e8; font-weight: bold; }
+        .tabs { display: flex; border-bottom: 2px solid #1a73e8; margin-bottom: 15px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+        .tab-btn { flex: 1; padding: 12px; background: #e8f0fe; border: none; font-size: 1.1em; cursor: pointer; color: #1a73e8; font-weight: bold; min-width: 120px; }
         .tab-btn.active { background: #1a73e8; color: white; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        input[type="text"], input[type="number"] { font-size: 14px; width: 80px; padding: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;}
-        .name-input { width: 120px !important; }
-        .file-input { width: 150px; font-size: 12px; }
+        input[type="text"], input[type="number"] { font-size: 14px; width: 100px; padding: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .name-input { width: 140px !important; }
         
-        .refresh-btn { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 15px; font-size: 1.1em;}
-        .delete-btn { background:#ff4d4d; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; width: 100%;}
+        .refresh-btn { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 15px; font-size: 1.1em; }
+        .delete-btn { background:#ff4d4d; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; width: 100%; }
         
-        /* 一括保存ボタン（目立つように） */
         .save-all-btn { width: 100%; padding: 15px; background: #e91e63; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1.2em; margin-top: 15px; display: none; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
         
-        /* 編集された行をわかりやすく */
         tr.dirty-row { background-color: #fff3e0; }
+
+        .export-btn { width: 100%; padding: 15px; background: #4caf50; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1.1em; margin-bottom: 15px; }
+        .export-btn-blue { background: #2196f3; }
     </style>
 </head>
 <body>
@@ -42,11 +42,11 @@
         <h1 style="font-size: 1.3em; text-align: center;">売上管理ダッシュボード（幹部用）</h1>
         
         <div class="stat-grid">
-            <div class="card" style="margin-bottom: 10px;">
+            <div class="card" style="margin-bottom: 0;">
                 <p style="margin:0;">総売上</p>
                 <div class="stat-value">¥<span id="totalRevenue">0</span></div>
             </div>
-            <div class="card" style="margin-bottom: 10px;">
+            <div class="card" style="margin-bottom: 0;">
                 <p style="margin:0;">決済件数</p>
                 <div class="stat-value"><span id="transactionCount">0</span>件</div>
             </div>
@@ -55,8 +55,10 @@
         <button class="refresh-btn" onclick="refreshAll()">🔄 最新の情報に更新</button>
 
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchAdminTab('products')" id="btn-products">📦 商品一括管理</button>
+            <button class="tab-btn active" onclick="switchAdminTab('products')" id="btn-products">📦 商品管理</button>
+            <button class="tab-btn" onclick="switchAdminTab('members')" id="btn-members">👥 メンバー/シフト</button>
             <button class="tab-btn" onclick="switchAdminTab('history')" id="btn-history">🧾 取引履歴</button>
+            <button class="tab-btn" onclick="switchAdminTab('export')" id="btn-export">📊 レポート出力</button>
         </div>
 
         <div id="tab-products" class="tab-content active card">
@@ -67,17 +69,34 @@
                     <thead>
                         <tr>
                             <th>画像</th>
-                            <th>商品名 / カテゴリ</th>
-                            <th>定価</th>
+                            <th>商品名 / 学籍番号</th>
+                            <th>定価 / 材料費</th>
                             <th>セール価格 / 有効化</th>
-                            <th>画像変更</th>
-                            <th>削除</th>
+                            <th>備考</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                 </table>
             </div>
             <button id="saveChangesBtn" class="save-all-btn" onclick="saveAllChanges()">⚠️ 変更をすべて保存する</button>
+        </div>
+
+        <div id="tab-members" class="tab-content card">
+            <h3 style="margin-top:0;">メンバーとシフトコマ数の登録</h3>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                <input type="text" id="memId" placeholder="学籍番号" style="flex:1;">
+                <input type="number" id="memSlots" placeholder="コマ数" style="width:80px;">
+                <button onclick="addMember()" style="padding:8px 15px; background:#333; color:white; border:none; border-radius:4px; font-weight:bold;">登録</button>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr><th>学籍番号</th><th>シフトコマ数</th><th>操作</th></tr>
+                    </thead>
+                    <tbody id="membersTableBody"></tbody>
+                </table>
+            </div>
         </div>
 
         <div id="tab-history" class="tab-content card">
@@ -91,10 +110,17 @@
                 </table>
             </div>
         </div>
+
+        <div id="tab-export" class="tab-content card">
+            <h3 style="margin-top:0;">CSVデータ出力</h3>
+            <p style="font-size: 0.9em; color: #555;">目的に合わせてExcelにコピペできるデータをダウンロードします。</p>
+            <button class="export-btn" onclick="downloadCSV('/export/overall', '全体の売上・利益集計.csv')">📊 全体レポート集計 (全商品分)</button>
+            <button class="export-btn export-btn-blue" onclick="downloadCSV('/export/distribution', '個人分配・シフト代計算.csv')">💰 個人分配・シフト代計算 (メンバー別)</button>
+        </div>
+
     </div>
 
     <script>
-        // 【追加】変更を追跡する仕組み
         let dirtyItems = new Set();
         let isDirty = false;
 
@@ -105,142 +131,161 @@
             document.getElementById('saveChangesBtn').style.display = 'block';
         }
 
-        // 【追加】ページを閉じようとした・リロードしようとした時の警告
         window.addEventListener('beforeunload', function (e) {
             if (isDirty) {
                 e.preventDefault();
-                e.returnValue = ''; // ブラウザ標準の警告文を表示
+                e.returnValue = ''; 
             }
         });
 
-        // タブ切り替え時の警告
         function switchAdminTab(tabId) {
             if (isDirty) {
                 if (!confirm("保存されていない変更があります。破棄して移動しますか？")) {
-                    return; // キャンセルされたら移動しない
+                    return; 
                 }
-                // 破棄に同意した場合はリセット
                 isDirty = false;
                 dirtyItems.clear();
                 document.getElementById('saveChangesBtn').style.display = 'none';
-                loadAdminItems(); // データを元に戻す
+                loadAdminItems(); 
             }
 
-            document.getElementById('btn-products').classList.remove('active');
-            document.getElementById('btn-history').classList.remove('active');
-            document.getElementById('tab-products').classList.remove('active');
-            document.getElementById('tab-history').classList.remove('active');
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
             document.getElementById(`btn-${tabId}`).classList.add('active');
             document.getElementById(`tab-${tabId}`).classList.add('active');
         }
 
         async function loadDashboard() {
-            const response = await fetch('/sales');
-            const data = await response.json();
-            let total = 0;
-            const tbody = document.querySelector('#salesTable tbody');
-            tbody.innerHTML = ''; 
-            data.reverse().forEach(sale => {
-                total += sale.total_amount;
-                const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
-                const timeStr = new Date(dateStr).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            try {
+                const response = await fetch('/sales');
+                const data = await response.json();
+                let total = 0;
+                const tbody = document.querySelector('#salesTable tbody');
+                tbody.innerHTML = ''; 
                 
-                let itemsText = "-";
-                if (sale.items_json) {
-                    try {
-                        const itemsObj = JSON.parse(sale.items_json);
-                        let lines = [];
-                        for (const [name, val] of Object.entries(itemsObj)) {
-                            // 旧データ（数値のみ）の場合
-                            if (typeof val === 'number') {
-                                lines.push(`${name} × ${val}`);
-                            } else {
-                                // 新データ（価格とセール情報を持つ）の場合
-                                let priceHtml = `¥${val.price}`;
-                                if (val.is_sale) {
-                                    const origHtml = val.original_price ? `<span style="text-decoration:line-through;color:#999;font-size:0.85em;margin-right:4px;">¥${val.original_price}</span>` : '';
-                                    priceHtml = `${origHtml}<span style="color:red;font-weight:bold;">¥${val.price}</span>`;
+                data.reverse().forEach(sale => {
+                    total += sale.total_amount;
+                    const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
+                    const timeStr = new Date(dateStr).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    
+                    let itemsText = "-";
+                    if (sale.items_json) {
+                        try {
+                            const itemsObj = JSON.parse(sale.items_json);
+                            let lines = [];
+                            for (const [name, val] of Object.entries(itemsObj)) {
+                                if (typeof val === 'number') {
+                                    lines.push(`${name} × ${val}`);
+                                } else {
+                                    let priceHtml = `¥${val.price}`;
+                                    if (val.is_sale) {
+                                        const origHtml = val.original_price ? `<span style="text-decoration:line-through;color:#999;font-size:0.85em;margin-right:4px;">¥${val.original_price}</span>` : '';
+                                        priceHtml = `${origHtml}<span style="color:red;font-weight:bold;">¥${val.price}</span>`;
+                                    }
+                                    
+                                    const nameStyle = val.is_sale ? 'color: red; font-weight: bold;' : '';
+                                    const tag = val.is_sale ? '[SALE] ' : '';
+                                    lines.push(`<span style="${nameStyle}">${tag}${name}</span> × ${val.quantity} (${priceHtml})`);
                                 }
-                                
-                                const nameStyle = val.is_sale ? 'color: red; font-weight: bold;' : '';
-                                const tag = val.is_sale ? '[SALE] ' : '';
-                                lines.push(`<span style="${nameStyle}">${tag}${name}</span> × ${val.quantity} (${priceHtml})`);
                             }
-                        }
-                        itemsText = lines.join('<br>');
-                    } catch (e) { itemsText = "解析エラー"; }
-                }
-                tbody.innerHTML += `<tr><td style="font-size:0.85em;">${timeStr}</td><td>${itemsText}</td><td style="font-weight:bold;">¥${sale.total_amount}</td></tr>`;
-            });
-            document.getElementById('totalRevenue').textContent = total.toLocaleString();
-            document.getElementById('transactionCount').textContent = data.length;
+                            itemsText = lines.join('<br>');
+                        } catch (e) { itemsText = "解析エラー"; }
+                    }
+                    tbody.innerHTML += `<tr><td style="font-size:0.85em;">${timeStr}</td><td>${itemsText}</td><td style="font-weight:bold;">¥${sale.total_amount}</td></tr>`;
+                });
+                document.getElementById('totalRevenue').textContent = total.toLocaleString();
+                document.getElementById('transactionCount').textContent = data.length;
+            } catch (e) {
+                console.error("履歴読み込みエラー");
+            }
         }
 
         async function loadAdminItems() {
-            const response = await fetch('/items');
-            const items = await response.json();
-            const tbody = document.querySelector('#itemsTable tbody');
-            tbody.innerHTML = ''; 
-            items.forEach(item => {
-                const imgSrc = item.image_url || 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23ddd%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2210%22%20text-anchor%3D%22middle%22%20fill%3D%22%23888%22%20dy%3D%22.3em%22%3ENo%3C%2Ftext%3E%3C%2Fsvg%3E';
-                const salePrice = item.sale_price !== null ? item.sale_price : '';
-                const isChecked = item.is_sale ? 'checked' : '';
+            try {
+                const response = await fetch('/items');
+                const items = await response.json();
+                const tbody = document.querySelector('#itemsTable tbody');
+                tbody.innerHTML = ''; 
+                items.forEach(item => {
+                    const imgSrc = item.image_url || 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23ddd%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-size%3D%2210%22%20text-anchor%3D%22middle%22%20fill%3D%22%23888%22%20dy%3D%22.3em%22%3ENo%3C%2Ftext%3E%3C%2Fsvg%3E';
+                    const salePrice = item.sale_price !== null ? item.sale_price : '';
+                    const isChecked = item.is_sale ? 'checked' : '';
 
-                // すべてのinputに oninput または onchange で markDirty を仕掛ける
-                tbody.innerHTML += `
-                    <tr id="row-${item.id}">
-                        <td><img src="${imgSrc}" width="40" height="40" style="object-fit:cover; border-radius:4px;"></td>
-                        <td>
-                            <input type="text" id="name-${item.id}" value="${item.name}" class="name-input" placeholder="商品名" oninput="markDirty(${item.id})"><br>
-                            <input type="text" id="cat-${item.id}" value="${item.category || ''}" class="name-input" placeholder="カテゴリ" style="margin-top:4px;" oninput="markDirty(${item.id})">
-                        </td>
-                        <td><input type="number" id="price-${item.id}" value="${item.price}" oninput="markDirty(${item.id})"></td>
-                        <td>
-                            <input type="number" id="sale-price-${item.id}" value="${salePrice}" placeholder="未設定" oninput="markDirty(${item.id})"><br>
-                            <label style="font-size:0.8em; margin-top:4px; display:inline-block;">
-                                <input type="checkbox" id="is-sale-${item.id}" ${isChecked} onchange="markDirty(${item.id})"> セール有効
-                            </label>
-                        </td>
-                        <td><input type="file" id="file-${item.id}" class="file-input" accept="image/*" onchange="markDirty(${item.id})"></td>
-                        <td>
-                            <button class="delete-btn" onclick="deleteItem(${item.id})">削除</button>
-                        </td>
-                    </tr>`;
-            });
+                    // 【修正】定価と材料費が0の場合は空文字にすることで、プレースホルダーを前面に出す
+                    const dispPrice = item.price ? item.price : '';
+                    const dispMaterial = item.material_fee ? item.material_fee : '';
+
+                    tbody.innerHTML += `
+                        <tr id="row-${item.id}">
+                            <td><img src="${imgSrc}" width="40" height="40" style="object-fit:cover; border-radius:4px;"></td>
+                            <td>
+                                <input type="text" id="n-${item.id}" value="${item.name}" class="name-input" placeholder="商品名" oninput="markDirty(${item.id})"><br>
+                                <input type="text" id="c-${item.id}" value="${item.creator_id || ''}" class="name-input" placeholder="製作者学籍番号" style="margin-top:4px;" oninput="markDirty(${item.id})">
+                            </td>
+                            <td>
+                                <input type="number" id="p-${item.id}" value="${dispPrice}" placeholder="定価" oninput="markDirty(${item.id})"><br>
+                                <input type="number" id="m-${item.id}" value="${dispMaterial}" placeholder="材料費" style="margin-top:4px;" oninput="markDirty(${item.id})">
+                            </td>
+                            <td>
+                                <input type="number" id="sp-${item.id}" value="${salePrice}" placeholder="未設定" oninput="markDirty(${item.id})"><br>
+                                <label style="font-size:0.8em; margin-top:4px; display:inline-block;">
+                                    <input type="checkbox" id="is-${item.id}" ${isChecked} onchange="markDirty(${item.id})"> セール有効
+                                </label>
+                            </td>
+                            <td>
+                                <input type="text" id="r-${item.id}" value="${item.remarks || ''}" placeholder="備考" oninput="markDirty(${item.id})">
+                            </td>
+                            <td>
+                                <button class="delete-btn" onclick="deleteItem(${item.id})">削除</button>
+                            </td>
+                        </tr>`;
+                });
+            } catch (e) { console.error("商品読み込みエラー"); }
         }
 
-        // 【追加】一括保存関数
+        async function loadMembers() {
+            try {
+                const resMem = await fetch('/members');
+                const members = await resMem.json();
+                const mBody = document.getElementById('membersTableBody');
+                mBody.innerHTML = '';
+                members.forEach(m => {
+                    mBody.innerHTML += `<tr>
+                        <td>${m.student_id}</td>
+                        <td>${m.shift_slots}</td>
+                        <td><button class="delete-btn" style="width:auto;" onclick="deleteMember('${m.student_id}')">削除</button></td>
+                    </tr>`;
+                });
+            } catch (e) { console.error("メンバー読み込みエラー"); }
+        }
+
         async function saveAllChanges() {
             if (dirtyItems.size === 0) return;
-            
             const btn = document.getElementById('saveChangesBtn');
             btn.textContent = '保存中...';
             btn.style.animation = 'none';
             btn.disabled = true;
 
-            // 変更された項目だけを並列でサーバーに送信する
             const promises = Array.from(dirtyItems).map(async (itemId) => {
                 const formData = new FormData();
-                formData.append('name', document.getElementById(`name-${itemId}`).value);
-                formData.append('category', document.getElementById(`cat-${itemId}`).value || '一般');
-                formData.append('price', document.getElementById(`price-${itemId}`).value);
+                formData.append('name', document.getElementById(`n-${itemId}`).value);
+                formData.append('price', document.getElementById(`p-${itemId}`).value || 0);
+                formData.append('creator_id', document.getElementById(`c-${itemId}`).value);
+                // 空欄の場合は0として送信
+                formData.append('material_fee', document.getElementById(`m-${itemId}`).value || 0);
+                formData.append('category', '一般');
                 
-                const salePrice = document.getElementById(`sale-price-${itemId}`).value;
+                const salePrice = document.getElementById(`sp-${itemId}`).value;
                 if (salePrice) formData.append('sale_price', salePrice);
-                
-                formData.append('is_sale', document.getElementById(`is-sale-${itemId}`).checked);
-                
-                const fileInput = document.getElementById(`file-${itemId}`);
-                if (fileInput.files.length > 0) {
-                    formData.append('file', fileInput.files[0]);
-                }
+                formData.append('is_sale', document.getElementById(`is-${itemId}`).checked);
+                formData.append('remarks', document.getElementById(`r-${itemId}`).value);
 
                 return fetch(`/items/${itemId}`, { method: 'PUT', body: formData });
             });
 
             try {
-                await Promise.all(promises); // 全ての送信が終わるまで待つ
+                await Promise.all(promises);
                 alert("すべての変更を保存しました！");
                 isDirty = false;
                 dirtyItems.clear();
@@ -250,11 +295,28 @@
                 btn.style.animation = 'pulse 1.5s infinite';
                 loadAdminItems();
             } catch (e) {
-                alert("一部の保存に失敗しました。通信状況を確認してください。");
+                alert("保存に失敗しました。");
                 btn.textContent = '⚠️ 変更をすべて保存する';
                 btn.disabled = false;
                 btn.style.animation = 'pulse 1.5s infinite';
             }
+        }
+
+        async function addMember() {
+            const student_id = document.getElementById('memId').value;
+            const shift_slots = document.getElementById('memSlots').value;
+            if(!student_id || !shift_slots) return alert("学籍番号とコマ数を入力してください");
+            
+            try {
+                await fetch('/members', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({student_id, shift_slots: parseInt(shift_slots, 10)})
+                });
+                document.getElementById('memId').value = '';
+                document.getElementById('memSlots').value = '';
+                loadMembers();
+            } catch (e) { alert("登録に失敗しました"); }
         }
 
         async function deleteItem(itemId) {
@@ -263,14 +325,42 @@
             loadAdminItems();
         }
 
+        async function deleteMember(sid) {
+            if (!confirm("このメンバーを削除しますか？")) return;
+            await fetch(`/members/${sid}`, { method: 'DELETE' });
+            loadMembers();
+        }
+
+        // 【修正】credentials: 'include' を追加して、Basic認証の情報をサーバーに送信する
+        async function downloadCSV(url, filename) {
+            try {
+                const res = await fetch(url, { credentials: 'include' }); // <-- ここが原因でした！
+                if (!res.ok) throw new Error("Network Error");
+                const blob = await res.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(downloadUrl);
+                a.remove();
+            } catch (e) {
+                alert("CSVの出力に失敗しました。");
+            }
+        }
+
         function refreshAll() { 
             if(isDirty && !confirm("変更を破棄してリロードしますか？")) return;
             isDirty = false;
             dirtyItems.clear();
             document.getElementById('saveChangesBtn').style.display = 'none';
             loadDashboard(); 
-            loadAdminItems(); 
+            loadAdminItems();
+            loadMembers();
         }
+        
         window.onload = refreshAll;
     </script>
 </body>
