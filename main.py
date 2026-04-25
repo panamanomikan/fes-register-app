@@ -173,7 +173,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
 def read_sales(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     return db.query(database.Sale).all()
 
-# CSV 1: 全体集計
+# CSV 1: 全体集計 (改修版)
 @app.get("/export/overall")
 def export_overall_csv(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     sales = db.query(database.Sale).all()
@@ -190,14 +190,18 @@ def export_overall_csv(db: Session = Depends(get_db), admin: str = Depends(get_a
             creator_id = info.get('creator_id', 'unknown')
             cost = info.get('material_fee', 0)
             remarks = info.get('remarks', '')
+            is_sale = info.get('is_sale', False)
             
-            key = (creator_id, name, cost, price, remarks)
+            # 作品名の頭に「【セール】」を付与して区別する
+            display_name = f"【セール】{name}" if is_sale else name
+            
+            key = (creator_id, display_name, cost, price, remarks)
             summary[key] = summary.get(key, 0) + qty
             total_revenue += price * qty
             total_group_return += math.floor(price * qty * 0.1)
 
     output = StringIO()
-    output.write('\ufeff') # 【重要】Excelでの文字化けを防ぐBOMを追加
+    output.write('\ufeff') # BOMの付与
     writer = csv.writer(output)
     writer.writerow(["製作者学籍番号", "作品名", "材料費", "販売価格", "作者利益", "シフト代", "団体還元", "個数", "備考", "売り上げ", "総売り上げ", "団体還元送金額"])
     
@@ -243,7 +247,7 @@ def export_distribution_csv(db: Session = Depends(get_db), admin: str = Depends(
     pay_per_slot = (total_shift_pool / total_slots) if total_slots > 0 else 0
 
     output = StringIO()
-    output.write('\ufeff') # 【重要】Excelでの文字化けを防ぐBOMを追加
+    output.write('\ufeff')
     writer = csv.writer(output)
     writer.writerow(["学籍番号", "シフトコマ数", "シフト代金", "作者利益", "総収入"])
 
