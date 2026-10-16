@@ -106,7 +106,7 @@ async def update_item_full(
     admin: str = Depends(get_admin_user)
 ):
     db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
-    if not db_item: return {"error": "NotFound"}
+    if not db_item: raise HTTPException(status_code=404, detail="商品が見つかりません")
 
     db_item.name = name
     db_item.price = price
@@ -132,7 +132,7 @@ async def update_item_full(
 @app.delete("/items/{item_id}")
 def delete_item(item_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
-    if not db_item: return {"error": "NotFound"}
+    if not db_item: raise HTTPException(status_code=404, detail="商品が見つかりません")
     db.delete(db_item)
     db.commit()
     return {"message": "Deleted"}
@@ -185,6 +185,9 @@ def export_overall_csv(db: Session = Depends(get_db), admin: str = Depends(get_a
         if not s.items_json: continue
         items = json.loads(s.items_json)
         for name, info in items.items():
+            name = info.get('name', name) if isinstance(info, dict) else name
+            if isinstance(info, int):
+                info = {'quantity': info, 'price': 0}
             price = info.get('price', 0)
             qty = info.get('quantity', 0)
             creator_id = info.get('creator_id', 'unknown')
@@ -236,6 +239,8 @@ def export_distribution_csv(db: Session = Depends(get_db), admin: str = Depends(
         if not s.items_json: continue
         items = json.loads(s.items_json)
         for name, info in items.items():
+            if isinstance(info, int):
+                info = {'quantity': info, 'price': 0}
             price = info.get('price', 0)
             qty = info.get('quantity', 0)
             creator_id = info.get('creator_id', 'unknown')

@@ -46,16 +46,19 @@
             <p class="cart-total">¥<span id="totalDisplay">0</span></p>
         </div>
         <button class="action-btn btn-clear" onclick="clearCart()">カートを取消</button>
-        <button class="action-btn btn-checkout" onclick="checkout()">会計確定</button>
+        <button id="checkoutButton" class="action-btn btn-checkout" onclick="checkout()">会計確定</button>
     </div>
 
     <script>
         let cart = {};
         let itemsData = [];
+        let checkoutBusy = false;
+        let checkoutUncertain = false;
 
         async function loadItems() {
             try {
                 const response = await fetch('/items');
+                if (!response.ok) throw new Error('商品取得失敗');
                 itemsData = await response.json();
                 renderTabsAndContents();
             } catch (error) { 
@@ -94,7 +97,7 @@
                     const imgSrc = item.image_url || 'https://via.placeholder.com/80?text=No+Image';
                     const card = document.createElement('div');
                     card.className = 'item-card';
-                    card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.creator_id, item.material_fee, item.remarks);
+                    card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.creator_id, item.material_fee, item.remarks, item.id);
                     card.innerHTML = `${badgeHtml}<img src="${imgSrc}" class="item-img"><div class="item-name">${item.name}</div>${priceHtml}`;
                     grid.appendChild(card);
                 });
@@ -150,13 +153,15 @@
             try {
                 const res = await fetch('/items', { method: 'POST', body: formData });
                 if (res.ok) { alert("登録しました"); location.reload(); }
+                else { alert('登録に失敗しました。入力内容を確認してください。'); }
             } catch (e) { alert("通信エラー"); }
         }
 
-        function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks) {
-            const key = `${itemName}_${price}`; // 価格が違う同名商品は別扱い
+        function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks, itemId = null) {
+            if (checkoutBusy || checkoutUncertain) return;
+            const key = JSON.stringify([itemId, itemId === null ? itemName : '', price, isSale]);
             if (!cart[key]) {
-                cart[key] = { name: itemName, price: price, quantity: 0, is_sale: isSale, original_price: originalPrice, creator_id: creatorId, material_fee: materialFee, remarks: remarks };
+                cart[key] = { item_id: itemId, name: itemName, price: price, quantity: 0, is_sale: isSale, original_price: originalPrice, creator_id: creatorId, material_fee: materialFee, remarks: remarks };
             }
             cart[key].quantity += 1;
             updateDisplay();
@@ -164,13 +169,13 @@
 
         function addCustomItem() {
             const price = prompt("金額を入力:");
-            if (!price || isNaN(price)) return;
+            if (!price || !Number.isSafeInteger(Number(price)) || Number(price) <= 0) return alert('正の整数で金額を入力してください');
             const name = prompt("商品名:", "手動入力");
             if (!name) return;
             addItem(name, parseInt(price), false, parseInt(price), 'manual', 0, '手動入力');
         }
 
-        function clearCart() { cart = {}; updateDisplay(); }
+        function clearCart() { if (checkoutBusy || checkoutUncertain) return; cart = {}; updateDisplay(); }
 
         function updateDisplay() {
             let total = 0;
@@ -187,12 +192,15 @@
         }
 
         async function checkout() {
+            if (checkoutBusy || checkoutUncertain) return;
             let total = 0;
             let itemsToSave = {};
             for (const key in cart) {
                 const item = cart[key];
                 total += item.price * item.quantity;
-                itemsToSave[item.name] = {
+                itemsToSave[key] = {
+                    name: item.name,
+                    item_id: item.item_id,
                     quantity: item.quantity,
                     price: item.price,
                     is_sale: item.is_sale,
@@ -203,14 +211,32 @@
                 };
             }
             if (total === 0) return;
+            checkoutBusy = true;
+            const button = document.getElementById('checkoutButton');
+            button.disabled = true;
+            button.textContent = '会計を保存中…';
             try {
                 const res = await fetch('/sales', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ total_amount: total, items_json: JSON.stringify(itemsToSave) })
                 });
-                if (res.ok) { alert("会計完了！"); clearCart(); }
-            } catch (e) { alert("エラー"); }
+                if (!res.ok) {
+                    if (res.status >= 500) throw new Error('保存結果不明');
+                    alert('会計が受け付けられませんでした。入力内容を確認してください。');
+                    return;
+                }
+                cart = {};
+                updateDisplay();
+                alert('会計完了！');
+            } catch (e) {
+                checkoutUncertain = true;
+                alert('保存結果を確認できません。二重記録を防ぐため再送を停止しました。管理者に取引履歴を確認してもらってください。');
+            } finally {
+                checkoutBusy = false;
+                button.disabled = checkoutUncertain;
+                button.textContent = checkoutUncertain ? '保存結果を管理者に確認してください' : '会計確定';
+            }
         }
         window.onload = loadItems;
     </script>

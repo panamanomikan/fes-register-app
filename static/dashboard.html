@@ -174,7 +174,8 @@
                         try {
                             const itemsObj = JSON.parse(sale.items_json);
                             let lines = [];
-                            for (const [name, val] of Object.entries(itemsObj)) {
+                            for (const [key, val] of Object.entries(itemsObj)) {
+                                const name = (val && typeof val === 'object' ? val.name : null) || key;
                                 if (typeof val === 'number') {
                                     lines.push(`${name} × ${val}`);
                                 } else {
@@ -222,6 +223,7 @@
                             <td>
                                 <input type="text" id="n-${item.id}" value="${item.name}" class="name-input" placeholder="商品名" oninput="markDirty(${item.id})"><br>
                                 <input type="text" id="c-${item.id}" value="${item.creator_id || ''}" class="name-input" placeholder="製作者学籍番号" style="margin-top:4px;" oninput="markDirty(${item.id})">
+                                <br><input type="text" id="cat-${item.id}" value="${item.category || '一般'}" placeholder="カテゴリ" oninput="markDirty(${item.id})">
                             </td>
                             <td>
                                 <input type="number" id="p-${item.id}" value="${dispPrice}" placeholder="定価" oninput="markDirty(${item.id})"><br>
@@ -274,14 +276,16 @@
                 formData.append('creator_id', document.getElementById(`c-${itemId}`).value);
                 // 空欄の場合は0として送信
                 formData.append('material_fee', document.getElementById(`m-${itemId}`).value || 0);
-                formData.append('category', '一般');
+                formData.append('category', document.getElementById(`cat-${itemId}`).value || '一般');
                 
                 const salePrice = document.getElementById(`sp-${itemId}`).value;
                 if (salePrice) formData.append('sale_price', salePrice);
                 formData.append('is_sale', document.getElementById(`is-${itemId}`).checked);
                 formData.append('remarks', document.getElementById(`r-${itemId}`).value);
 
-                return fetch(`/items/${itemId}`, { method: 'PUT', body: formData });
+                const response = await fetch(`/items/${itemId}`, { method: 'PUT', body: formData });
+                if (!response.ok) throw new Error('保存失敗');
+                return response;
             });
 
             try {
@@ -295,7 +299,7 @@
                 btn.style.animation = 'pulse 1.5s infinite';
                 loadAdminItems();
             } catch (e) {
-                alert("保存に失敗しました。");
+                alert("一部またはすべての保存に失敗しました。入力を残しています。内容を確認して再保存してください。");
                 btn.textContent = '⚠️ 変更をすべて保存する';
                 btn.disabled = false;
                 btn.style.animation = 'pulse 1.5s infinite';
