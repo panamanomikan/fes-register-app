@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>売上管理ダッシュボード</title>
     <style>
         body { font-family: sans-serif; padding: 10px; background-color: #f0f2f5; margin: 0; font-size: 16px; }
@@ -22,7 +22,7 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        input[type="text"], input[type="number"] { font-size: 14px; width: 100px; padding: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        input[type="text"], input[type="number"] { font-size: 16px; width: 100px; padding: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         .name-input { width: 140px !important; }
         
         .refresh-btn { width: 100%; padding: 12px; background: #333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 15px; font-size: 1.1em; }
@@ -166,8 +166,8 @@
                 
                 data.reverse().forEach(sale => {
                     total += sale.total_amount;
-                    const dateStr = sale.created_at.endsWith('Z') ? sale.created_at : sale.created_at + 'Z';
-                    const timeStr = new Date(dateStr).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    const dateStr = /(?:Z|[+-]\d{2}:\d{2})$/.test(sale.created_at) ? sale.created_at : sale.created_at + 'Z';
+                    const timeStr = new Date(dateStr).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     
                     let itemsText = "-";
                     if (sale.items_json) {
@@ -289,7 +289,8 @@
             });
 
             try {
-                await Promise.all(promises);
+                const results = await Promise.allSettled(promises);
+                if (results.some(result => result.status === 'rejected')) throw new Error('保存失敗');
                 alert("すべての変更を保存しました！");
                 isDirty = false;
                 dirtyItems.clear();
@@ -312,11 +313,12 @@
             if(!student_id || !shift_slots) return alert("学籍番号とコマ数を入力してください");
             
             try {
-                await fetch('/members', {
+                const response = await fetch('/members', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({student_id, shift_slots: parseInt(shift_slots, 10)})
                 });
+                if (!response.ok) throw new Error('登録失敗');
                 document.getElementById('memId').value = '';
                 document.getElementById('memSlots').value = '';
                 loadMembers();
@@ -325,14 +327,23 @@
 
         async function deleteItem(itemId) {
             if (!confirm("本当に削除しますか？")) return;
-            await fetch(`/items/${itemId}`, { method: 'DELETE' });
-            loadAdminItems();
+            try {
+                const response = await fetch(`/items/${itemId}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('削除失敗');
+                dirtyItems.delete(itemId);
+                isDirty = dirtyItems.size > 0;
+                document.getElementById(`row-${itemId}`).remove();
+                document.getElementById('saveChangesBtn').style.display = isDirty ? 'block' : 'none';
+            } catch (e) { alert('削除に失敗しました。'); }
         }
 
         async function deleteMember(sid) {
             if (!confirm("このメンバーを削除しますか？")) return;
-            await fetch(`/members/${sid}`, { method: 'DELETE' });
-            loadMembers();
+            try {
+                const response = await fetch(`/members/${encodeURIComponent(sid)}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('削除失敗');
+                loadMembers();
+            } catch (e) { alert('削除に失敗しました。'); }
         }
 
         // 【修正】credentials: 'include' を追加して、Basic認証の情報をサーバーに送信する

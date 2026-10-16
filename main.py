@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import database
@@ -48,12 +48,41 @@ def get_db():
 
 # Pydanticモデル
 class SaleCreate(BaseModel):
-    total_amount: int
-    items_json: Optional[str] = None
+    total_amount: int = Field(gt=0, le=2147483647)
+    items_json: str
+
+    @model_validator(mode='after')
+    def validate_details(self):
+        try:
+            items = json.loads(self.items_json)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError('購入内訳が不正です') from exc
+        if not isinstance(items, dict) or not items:
+            raise ValueError('購入内訳が空です')
+        total = 0
+        for info in items.values():
+            if not isinstance(info, dict):
+                raise ValueError('購入内訳の形式が不正です')
+            price, quantity = info.get('price'), info.get('quantity')
+            if type(price) is not int or price < 0 or type(quantity) is not int or quantity <= 0:
+                raise ValueError('単価・数量が不正です')
+            total += price * quantity
+        if total != self.total_amount:
+            raise ValueError('合計と購入内訳が一致しません')
+        return self
 
 class MemberUpdate(BaseModel):
     student_id: str
-    shift_slots: int
+    shift_slots: int = Field(ge=0, le=2147483647)
+
+
+def validate_item(name, price, material_fee, sale_price=None, is_sale=False):
+    if not name.strip() or price < 0 or (material_fee is not None and material_fee < 0):
+        raise HTTPException(status_code=422, detail='商品名を入力し、金額は0以上にしてください')
+    if sale_price is not None and sale_price < 0:
+        raise HTTPException(status_code=422, detail='セール価格は0以上にしてください')
+    if is_sale and sale_price is None:
+        raise HTTPException(status_code=422, detail='セール有効時はセール価格を入力してください')
 
 @app.get("/items")
 def read_items(db: Session = Depends(get_db)):
@@ -70,6 +99,7 @@ async def create_item(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    validate_item(name, price, material_fee)
     try:
         file_ext = file.filename.split(".")[-1]
         file_name = f"{uuid.uuid4()}.{file_ext}"
@@ -105,6 +135,7 @@ async def update_item_full(
     db: Session = Depends(get_db),
     admin: str = Depends(get_admin_user)
 ):
+    validate_item(name, price, material_fee, sale_price, is_sale)
     db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
     if not db_item: raise HTTPException(status_code=404, detail="商品が見つかりません")
 
@@ -171,7 +202,7 @@ def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
 
 @app.get("/sales")
 def read_sales(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    return db.query(database.Sale).all()
+    return db.query(database.Sale).order_by(database.Sale.id).all()
 
 # CSV 1: 全体集計 (改修版)
 @app.get("/export/overall")
