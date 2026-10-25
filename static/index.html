@@ -54,6 +54,8 @@
         let itemsData = [];
         let checkoutBusy = false;
         let checkoutUncertain = false;
+        let itemRegistrationBusy = false;
+        let itemRegistrationUncertain = false;
 
         async function loadItems() {
             try {
@@ -125,7 +127,7 @@
                     <input type="text" id="newCategory" placeholder="カテゴリ（例：キーホルダー）">
                     <input type="text" id="newRemarks" placeholder="備考 (例: 色違いなど)">
                     画像：<input type="file" id="newFile" accept="image/*">
-                    <button onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:5px;">登録実行</button>
+                    <button id="registerItemButton" onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:5px;">登録実行</button>
                 </div>`;
             contentsContainer.appendChild(opsContent);
         }
@@ -139,10 +141,20 @@
         }
 
         async function submitNewItem() {
+            if (itemRegistrationBusy || itemRegistrationUncertain) return;
+            const name = document.getElementById('newName').value.trim();
+            if (!name) { alert('商品名を入力してください'); return; }
+            for (const [id, label] of [['newPrice', '定価'], ['newMaterial', '材料費']]) {
+                const value = document.getElementById(id).value.trim();
+                if (value === '') { alert(`${label}を入力してください（0円の場合は0を入力）`); return; }
+                if (!Number.isSafeInteger(Number(value)) || Number(value) < 0 || Number(value) > 2147483647) {
+                    alert(`${label}は0〜2147483647の整数で入力してください`); return;
+                }
+            }
             const formData = new FormData();
-            formData.append('name', document.getElementById('newName').value);
+            formData.append('name', name);
             formData.append('price', document.getElementById('newPrice').value);
-            formData.append('material_fee', document.getElementById('newMaterial').value || 0);
+            formData.append('material_fee', document.getElementById('newMaterial').value);
             formData.append('creator_id', document.getElementById('newCreator').value || 'unknown');
             formData.append('category', document.getElementById('newCategory').value || '一般');
             formData.append('remarks', document.getElementById('newRemarks').value || '');
@@ -150,11 +162,37 @@
             if (!fileInput.files[0]) { alert("画像を選択してください"); return; }
             formData.append('file', fileInput.files[0]);
 
+            const button = document.getElementById('registerItemButton');
+            itemRegistrationBusy = true;
+            button.disabled = true;
+            button.textContent = '登録中…そのままお待ちください';
             try {
                 const res = await fetch('/items', { method: 'POST', body: formData });
-                if (res.ok) { alert("登録しました"); location.reload(); }
-                else { alert('登録に失敗しました。入力内容を確認してください。'); }
-            } catch (e) { alert("通信エラー"); }
+                if (!res.ok) {
+                    if (res.status >= 500) throw new Error('保存結果不明');
+                    alert('登録が受け付けられませんでした。商品名・定価・材料費・画像を確認してください。');
+                    return;
+                }
+            } catch (e) {
+                itemRegistrationUncertain = true;
+                alert('商品の保存結果を確認できません。すでに登録されている可能性があります。二重登録を防ぐため再送を停止しました。管理画面の商品一覧を確認してから、この画面を再読み込みしてください。');
+                return;
+            } finally {
+                if (!itemRegistrationUncertain) {
+                    itemRegistrationBusy = false;
+                    button.disabled = false;
+                    button.textContent = '登録実行';
+                } else {
+                    button.textContent = '保存結果不明：商品一覧を確認してください';
+                }
+            }
+            // 保存成功後の一覧取得失敗を、登録失敗として扱わない。
+            itemRegistrationBusy = true;
+            button.disabled = true;
+            button.textContent = '登録済み';
+            alert('登録しました');
+            await loadItems();
+            itemRegistrationBusy = false;
         }
 
         function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks, itemId = null) {
