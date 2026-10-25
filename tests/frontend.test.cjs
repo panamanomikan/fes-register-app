@@ -76,12 +76,14 @@ function page(file) {
     r.context.document.getElementById('newMaterial').value = '';
     await r.run('submitNewItem()');
     assert.match(r.alerts.at(-1), /材料費を入力/);
+    assert.match(r.context.document.getElementById('registrationStatus').textContent, /材料費を入力/);
     assert.equal(posts, 0);
     r.context.document.getElementById('newMaterial').value = '0';
     const registration = r.run('submitNewItem()');
     await r.run('submitNewItem()');
     assert.equal(posts, 1);
     assert.equal(r.context.document.getElementById('registerItemButton').disabled, true);
+    assert.match(r.context.document.getElementById('registrationStatus').textContent, /登録中/);
     resolvePost({ok: true});
     await registration;
     assert.equal(r.alerts.at(-1), '登録しました');

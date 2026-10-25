@@ -36,6 +36,8 @@
 <body>
     <div class="container">
         <h1>学園祭レジ</h1>
+        <p style="font-size:12px;color:#666;">画面バージョン：2026-10-26.1</p>
+        <p id="registrationStatus" role="status" aria-live="polite" style="white-space:pre-line;"></p>
         <div id="tabsContainer" class="tabs"><p>読み込み中...</p></div>
         <div id="tabContentsContainer"></div>
         <div class="cart">
@@ -140,16 +142,32 @@
             if(targetBtn) targetBtn.classList.add('active');
         }
 
+        function showRegistrationStatus(message, isError = false) {
+            const status = document.getElementById('registrationStatus');
+            status.textContent = message;
+            status.style.color = isError ? '#b71c1c' : '#1565c0';
+            status.scrollIntoView?.({block: 'nearest'});
+        }
+
         async function submitNewItem() {
             if (itemRegistrationBusy || itemRegistrationUncertain) return;
             const name = document.getElementById('newName').value.trim();
-            if (!name) { alert('商品名を入力してください'); return; }
+            const errors = [];
+            if (!name) errors.push('商品名を入力してください');
             for (const [id, label] of [['newPrice', '定価'], ['newMaterial', '材料費']]) {
                 const value = document.getElementById(id).value.trim();
-                if (value === '') { alert(`${label}を入力してください（0円の場合は0を入力）`); return; }
-                if (!Number.isSafeInteger(Number(value)) || Number(value) < 0 || Number(value) > 2147483647) {
-                    alert(`${label}は0〜2147483647の整数で入力してください`); return;
+                if (value === '') { errors.push(`${label}を入力してください（0円の場合は0を入力）`); }
+                else if (!Number.isSafeInteger(Number(value)) || Number(value) < 0 || Number(value) > 2147483647) {
+                    errors.push(`${label}は0〜2147483647の整数で入力してください`);
                 }
+            }
+            const fileInput = document.getElementById('newFile');
+            if (!fileInput.files[0]) errors.push('画像を選択してください');
+            if (errors.length) {
+                const message = errors.join('\n');
+                showRegistrationStatus(message, true);
+                alert(message);
+                return;
             }
             const formData = new FormData();
             formData.append('name', name);
@@ -158,23 +176,24 @@
             formData.append('creator_id', document.getElementById('newCreator').value || 'unknown');
             formData.append('category', document.getElementById('newCategory').value || '一般');
             formData.append('remarks', document.getElementById('newRemarks').value || '');
-            const fileInput = document.getElementById('newFile');
-            if (!fileInput.files[0]) { alert("画像を選択してください"); return; }
             formData.append('file', fileInput.files[0]);
 
             const button = document.getElementById('registerItemButton');
             itemRegistrationBusy = true;
             button.disabled = true;
             button.textContent = '登録中…そのままお待ちください';
+            showRegistrationStatus('登録中…そのままお待ちください');
             try {
                 const res = await fetch('/items', { method: 'POST', body: formData });
                 if (!res.ok) {
                     if (res.status >= 500) throw new Error('保存結果不明');
+                    showRegistrationStatus('登録が受け付けられませんでした。入力内容を確認してください。', true);
                     alert('登録が受け付けられませんでした。商品名・定価・材料費・画像を確認してください。');
                     return;
                 }
             } catch (e) {
                 itemRegistrationUncertain = true;
+                showRegistrationStatus('保存結果不明：すでに登録されている可能性があります。管理画面の商品一覧を確認してください。再送は停止しています。', true);
                 alert('商品の保存結果を確認できません。すでに登録されている可能性があります。二重登録を防ぐため再送を停止しました。管理画面の商品一覧を確認してから、この画面を再読み込みしてください。');
                 return;
             } finally {
@@ -190,8 +209,10 @@
             itemRegistrationBusy = true;
             button.disabled = true;
             button.textContent = '登録済み';
+            showRegistrationStatus('登録しました。商品一覧を更新しています…');
             alert('登録しました');
             await loadItems();
+            showRegistrationStatus('登録しました。一覧に反映されない場合はページを再読み込みしてください。');
             itemRegistrationBusy = false;
         }
 

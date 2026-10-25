@@ -304,6 +304,6 @@ def export_distribution_csv(db: Session = Depends(get_db), admin: str = Depends(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
-def read_root(): return FileResponse("static/index.html")
+def read_root(): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
 @app.get("/admin")
 def read_dashboard(admin: str = Depends(get_admin_user)): return FileResponse("static/dashboard.html")
