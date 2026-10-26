@@ -102,7 +102,7 @@ function page(file) {
         await p.run('submitNewItem()');
         await p.run('submitNewItem()');
         const uncertain = !response || response.status === 500;
-        assert.equal(calls, 2);
+        assert.equal(calls, uncertain ? 4 : 2);
         assert.equal(ids[0] === ids[1], uncertain);
         assert.equal(p.run('itemRegistrationUncertain'), uncertain);
         assert.equal(p.context.document.getElementById('newName').value, '作品');
@@ -111,15 +111,22 @@ function page(file) {
     }
     const cost = registrationPage();
     cost.context.document.getElementById('newMaterial').value = '150';
-    let confirmed = 0, costPosts = 0;
-    cost.context.confirm = () => { confirmed++; return false; };
+    let costPosts = 0;
+    cost.context.confirm = () => { throw Error('ネイティブダイアログを使ってはいけない'); };
     cost.context.fetch = async () => { costPosts++; return {ok: true}; };
     await cost.run('submitNewItem()');
-    assert.equal(confirmed, 1);
+    assert.equal(cost.context.document.getElementById('costConfirmation').hidden, false);
     assert.equal(costPosts, 0);
-    cost.context.confirm = () => true;
-    cost.context.fetch = async (url, options) => { if (!options) throw Error('一覧'); costPosts++; return {ok: true}; };
+    cost.run('cancelCostConfirmation()');
+    assert.equal(cost.context.document.getElementById('costConfirmation').hidden, true);
+    assert.equal(cost.context.document.getElementById('newMaterial').value, '150');
     await cost.run('submitNewItem()');
+    cost.run('var oldApproval = pendingCostConfirmation');
+    cost.context.document.getElementById('newMaterial').value = '200';
+    await cost.run('submitNewItem(oldApproval)');
+    assert.equal(costPosts, 0);
+    cost.context.fetch = async (url, options) => { if (!options) throw Error('一覧'); costPosts++; return {ok: true}; };
+    await cost.run('submitNewItem(pendingCostConfirmation)');
     assert.equal(costPosts, 1);
     const recovered = registrationPage();
     let recoveredPosts = 0;
@@ -133,6 +140,19 @@ function page(file) {
     assert.equal(recoveredPosts, 1);
     assert.equal(recovered.run('pendingRegistration'), null);
     assert.match(recovered.context.document.getElementById('registrationStatus').textContent, /登録しました/);
+    const automatic = registrationPage();
+    const automaticIds = [];
+    automatic.context.fetch = async (url, options) => {
+        if (url.startsWith('/item-registrations/')) return {ok: false, status: 404};
+        if (!options) throw Error('一覧');
+        automaticIds.push(options.body.get('request_id'));
+        if (automaticIds.length === 1) return {ok: false, status: 503};
+        return {ok: true};
+    };
+    await automatic.run('submitNewItem()');
+    assert.equal(automaticIds.length, 2);
+    assert.equal(automaticIds[0], automaticIds[1]);
+    assert.equal(automatic.run('pendingRegistration'), null);
     const compress = registrationPage();
     let revoked = false;
     const canvas = {getContext: () => ({fillRect() {}, drawImage() {}}), toBlob: fn => fn(new Blob(['small'], {type: 'image/jpeg'}))};

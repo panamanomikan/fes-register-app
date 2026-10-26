@@ -137,6 +137,11 @@
                     <input type="text" id="newCategory" placeholder="カテゴリ（例：キーホルダー）">
                     <input type="text" id="newRemarks" placeholder="備考 (例: 色違いなど)">
                     画像：<input type="file" id="newFile" accept="image/*">
+                    <div id="costConfirmation" hidden role="group" aria-label="材料費の確認" style="border:2px solid #e6a100;background:#fff8e1;padding:12px;margin:10px 0;">
+                        <p id="costConfirmationMessage"></p>
+                        <button type="button" onclick="submitNewItem(pendingCostConfirmation)" style="padding:12px;margin:4px;">この金額で登録する</button>
+                        <button type="button" onclick="cancelCostConfirmation()" style="padding:12px;margin:4px;">修正する</button>
+                    </div>
                     <button id="registerItemButton" onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:5px;">登録実行</button>
                 </div>`;
             contentsContainer.appendChild(opsContent);
@@ -212,7 +217,7 @@
             finally { clearTimeout(timer); }
         }
 
-        async function sendPendingRegistration(checkFirst = false) {
+        async function sendPendingRegistration(checkFirst = false, retriesLeft = 1) {
             try {
                 if (checkFirst && await savedRegistrationExists()) {
                     await registrationCompleted();
@@ -226,7 +231,7 @@
                         showRegistrationStatus(res.status === 413 ? '画像は20MB以下にしてください。入力は残しています。' : '入力内容が受け付けられませんでした。入力は残していますので修正してください。', true);
                         return;
                     }
-                    throw new Error('保存結果不明');
+                    throw Object.assign(new Error('保存結果不明'), {status: res.status});
                 }
                 await registrationCompleted();
             } catch (error) {
@@ -237,6 +242,11 @@
                         return;
                     }
                 } catch (_) { /* 入力と同じ受付番号を保持し、利用者による再試行を待つ */ }
+                if (pendingRegistration && retriesLeft > 0 && (!error.status || error.status >= 500 || error.status === 429)) {
+                    showRegistrationStatus('通信を再確認しています…同じ受付番号で自動再試行します。そのままお待ちください。');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return await sendPendingRegistration(false, retriesLeft - 1);
+                }
                 itemRegistrationUncertain = true;
                 showRegistrationStatus('保存結果を確認できません。入力と画像はこの画面に残しています。通信が戻ったら「保存結果を確認・同じ内容で再送」を押してください。二重登録は防止されます。ページ更新は不要です。', true);
             } finally {
@@ -245,7 +255,16 @@
             }
         }
 
-        async function submitNewItem() {
+        let pendingCostConfirmation = null;
+
+        function cancelCostConfirmation() {
+            pendingCostConfirmation = null;
+            document.getElementById('costConfirmation').hidden = true;
+            showRegistrationStatus('登録はまだ行っていません。金額を確認・修正してください。');
+            document.getElementById('newMaterial').focus?.();
+        }
+
+        async function submitNewItem(approvedCost = null) {
             if (itemRegistrationBusy) return;
             if (pendingRegistration) {
                 itemRegistrationBusy = true;
@@ -272,11 +291,20 @@
                 alert(message);
                 return;
             }
-            if (Number(document.getElementById('newMaterial').value) > Number(document.getElementById('newPrice').value) &&
-                !confirm('材料費が定価を上回っています。この金額で登録してもよろしいですか？')) {
-                showRegistrationStatus('登録を中止しました。金額を確認・修正してください。');
+            const price = Number(document.getElementById('newPrice').value);
+            const material = Number(document.getElementById('newMaterial').value);
+            const costSignature = JSON.stringify([price, material]);
+            if (material > price && approvedCost !== costSignature) {
+                pendingCostConfirmation = costSignature;
+                const panel = document.getElementById('costConfirmation');
+                document.getElementById('costConfirmationMessage').textContent = `材料費（${material}円）が定価（${price}円）を上回っています。この金額で登録してもよろしいですか？`;
+                panel.hidden = false;
+                showRegistrationStatus('材料費が定価を上回っています。商品登録欄の確認ボタンを選んでください。');
+                panel.scrollIntoView?.({block: 'center'});
                 return;
             }
+            document.getElementById('costConfirmation').hidden = true;
+            pendingCostConfirmation = null;
             itemRegistrationBusy = true;
             updateRegistrationControls();
             showRegistrationStatus('登録中…画像を準備しています');
