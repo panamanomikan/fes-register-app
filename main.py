@@ -3,6 +3,8 @@ import uuid
 import json
 import csv
 import math
+import hashlib
+import logging
 from io import StringIO
 from typing import Optional, List
 from fastapi import FastAPI, Depends, Form, UploadFile, File, HTTPException, status
@@ -10,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, Field, model_validator
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -89,7 +92,7 @@ def read_items(db: Session = Depends(get_db)):
     return db.query(database.Item).order_by(database.Item.id).all()
 
 @app.post("/items")
-async def create_item(
+def create_item(
     name: str = Form(...),
     price: int = Form(...),
     category: str = Form("一般"),
@@ -97,15 +100,44 @@ async def create_item(
     material_fee: int = Form(0),
     remarks: str = Form(""),
     file: UploadFile = File(...),
+    request_id: Optional[uuid.UUID] = Form(None),
     db: Session = Depends(get_db)
 ):
     validate_item(name, price, material_fee)
+    # 同期I/OはFastAPIのワーカースレッドで処理する。
+    content = file.file.read(20 * 1024 * 1024 + 1)
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail='画像は20MB以下にしてください')
+    if not content:
+        raise HTTPException(status_code=422, detail='画像が空です')
+    request_key = str(request_id or uuid.uuid4())  # 旧画面との互換性
+    payload = json.dumps([name, price, category, creator_id, material_fee, remarks, file.content_type], ensure_ascii=False)
+    payload_hash = hashlib.sha256(payload.encode() + b'\0' + content).hexdigest()
+
+    def saved_result(receipt):
+        if receipt.payload_hash != payload_hash:
+            raise HTTPException(status_code=409, detail='受付番号と登録内容が一致しません。元の内容で再送してください。')
+        return {'message': 'Success', 'item_id': receipt.item_id, 'request_id': request_key}
+
     try:
+        existing = db.get(database.ItemRegistration, request_key)
+        if existing:
+            return saved_result(existing)
+        receipt = database.ItemRegistration(request_id=request_key, payload_hash=payload_hash)
+        db.add(receipt)
+        try:
+            # DBの一意制約で、別ワーカーからの同じ受付番号も直列化する。
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            existing = db.get(database.ItemRegistration, request_key)
+            if existing:
+                return saved_result(existing)
+            raise
         file_ext = file.filename.split(".")[-1]
         file_name = f"{uuid.uuid4()}.{file_ext}"
-        file_content = await file.read()
         supabase.storage.from_("item-images").upload(
-            path=file_name, file=file_content, file_options={"content-type": file.content_type}
+            path=file_name, file=content, file_options={"content-type": file.content_type}
         )
         image_url = supabase.storage.from_("item-images").get_public_url(file_name)
         
@@ -115,13 +147,29 @@ async def create_item(
             material_fee=material_fee, remarks=remarks
         )
         db.add(db_item)
+        db.flush()
+        receipt.item_id = db_item.id
+        result = {'message': 'Success', 'item_id': db_item.id, 'request_id': request_key}
         db.commit()
-        return {"message": "Success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return result
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logging.exception('Item registration failed: request_id=%s', request_key)
+        raise HTTPException(status_code=503, detail='保存結果を確認できません。同じ受付番号で再確認してください。')
+
+
+@app.get('/item-registrations/{request_id}')
+def read_item_registration(request_id: uuid.UUID, db: Session = Depends(get_db)):
+    receipt = db.get(database.ItemRegistration, str(request_id))
+    if not receipt:
+        raise HTTPException(status_code=404, detail='登録完了はまだ確認できません')
+    return {'status': 'completed', 'item_id': receipt.item_id}
 
 @app.put("/items/{item_id}")
-async def update_item_full(
+def update_item_full(
     item_id: int,
     name: str = Form(...),
     price: int = Form(...),
@@ -151,7 +199,7 @@ async def update_item_full(
     if file and file.filename:
         file_ext = file.filename.split(".")[-1]
         file_name = f"{uuid.uuid4()}.{file_ext}"
-        file_content = await file.read()
+        file_content = file.file.read()
         supabase.storage.from_("item-images").upload(
             path=file_name, file=file_content, file_options={"content-type": file.content_type}
         )

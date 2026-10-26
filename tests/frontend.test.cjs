@@ -6,7 +6,7 @@ function page(file) {
     const alerts = [];
     const context = vm.createContext({
         window: {addEventListener() {}}, alert: msg => alerts.push(msg),
-        console, FormData, confirm: () => true,
+        console, FormData, File, AbortController, setTimeout, clearTimeout, crypto: require('node:crypto').webcrypto, confirm: () => true,
         document: {
             getElementById(id) {
                 if (!nodes.has(id)) nodes.set(id, {value: '', style: {}, classList: {add() {}}, appendChild() {}});
@@ -86,19 +86,75 @@ function page(file) {
     assert.match(r.context.document.getElementById('registrationStatus').textContent, /登録中/);
     resolvePost({ok: true});
     await registration;
-    assert.equal(r.alerts.at(-1), '登録しました');
-    assert.equal(r.context.document.getElementById('registerItemButton').disabled, true);
+    assert.match(r.context.document.getElementById('registrationStatus').textContent, /登録しました/);
+    assert.equal(r.context.document.getElementById('registerItemButton').disabled, false);
+    assert.equal(r.context.document.getElementById('newName').value, '');
     for (const response of [null, {ok: false, status: 500}, {ok: false, status: 422}]) {
         const p = registrationPage();
         let calls = 0;
-        p.context.fetch = async () => { calls++; if (!response) throw Error('offline'); return response; };
+        const ids = [];
+        p.context.fetch = async (url, options) => {
+            if (url.startsWith('/item-registrations/')) return {ok: false, status: 404};
+            calls++;
+            ids.push(options.body.get('request_id'));
+            if (!response) throw Error('offline'); return response;
+        };
         await p.run('submitNewItem()');
         await p.run('submitNewItem()');
         const uncertain = !response || response.status === 500;
-        assert.equal(calls, uncertain ? 1 : 2);
+        assert.equal(calls, 2);
+        assert.equal(ids[0] === ids[1], uncertain);
         assert.equal(p.run('itemRegistrationUncertain'), uncertain);
         assert.equal(p.context.document.getElementById('newName').value, '作品');
+        assert.equal(p.context.document.getElementById('newFile').files.length, 1);
+        assert.equal(p.context.document.getElementById('registerItemButton').disabled, false);
     }
-    console.log('PASS: 商品登録の必須入力、0円、連打防止、保存結果不明時の再送停止、422再試行、保存成功後の一覧取得失敗');
+    const cost = registrationPage();
+    cost.context.document.getElementById('newMaterial').value = '150';
+    let confirmed = 0, costPosts = 0;
+    cost.context.confirm = () => { confirmed++; return false; };
+    cost.context.fetch = async () => { costPosts++; return {ok: true}; };
+    await cost.run('submitNewItem()');
+    assert.equal(confirmed, 1);
+    assert.equal(costPosts, 0);
+    cost.context.confirm = () => true;
+    cost.context.fetch = async (url, options) => { if (!options) throw Error('一覧'); costPosts++; return {ok: true}; };
+    await cost.run('submitNewItem()');
+    assert.equal(costPosts, 1);
+    const recovered = registrationPage();
+    let recoveredPosts = 0;
+    recovered.context.fetch = async (url, options) => {
+        if (url.startsWith('/item-registrations/')) return {ok: true};
+        if (!options) throw Error('一覧');
+        recoveredPosts++;
+        throw Error('response lost after commit');
+    };
+    await recovered.run('submitNewItem()');
+    assert.equal(recoveredPosts, 1);
+    assert.equal(recovered.run('pendingRegistration'), null);
+    assert.match(recovered.context.document.getElementById('registrationStatus').textContent, /登録しました/);
+    const compress = registrationPage();
+    let revoked = false;
+    const canvas = {getContext: () => ({fillRect() {}, drawImage() {}}), toBlob: fn => fn(new Blob(['small'], {type: 'image/jpeg'}))};
+    compress.context.URL = {createObjectURL: () => 'blob:test', revokeObjectURL: () => { revoked = true; }};
+    compress.context.Image = class {
+        naturalWidth = 4000; naturalHeight = 3000;
+        set src(value) { this.onload(); }
+    };
+    compress.context.document.createElement = () => canvas;
+    compress.context.photo = new File([new Uint8Array(2 * 1024 * 1024)], 'large.jpg', {type: 'image/jpeg'});
+    const small = await compress.run('prepareProductImage(photo)');
+    assert.equal(canvas.width, 1600);
+    assert.equal(canvas.height, 1200);
+    assert.equal(small.type, 'image/jpeg');
+    assert(small.size < compress.context.photo.size);
+    assert(revoked);
+    a.context.document.getElementById('p-1').value = '100';
+    a.context.document.getElementById('m-1').value = '200';
+    a.context.confirm = () => false;
+    a.context.fetch = () => { throw Error('キャンセル後に送信してはいけない'); };
+    await a.run('saveAllChanges()');
+    assert.equal(a.run('dirtyItems.size'), 1);
+    console.log('PASS: 商品登録の必須入力、連打防止、同じ受付番号で再送、入力と画像保持、保存結果照会、材料費の確認');
     console.log('PASS: 同名商品、合計、連打防止、会計中の変更防止、通信不明時の再送停止、カテゴリ保存、保存失敗時の入力保持');
 })().catch(error => { console.error(error); process.exitCode = 1; });

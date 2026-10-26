@@ -264,6 +264,9 @@
 
         async function saveAllChanges() {
             if (dirtyItems.size === 0) return;
+            const costlyItems = Array.from(dirtyItems).filter(id =>
+                Number(document.getElementById(`m-${id}`).value) > Number(document.getElementById(`p-${id}`).value));
+            if (costlyItems.length && !confirm(`材料費が定価を上回る商品が${costlyItems.length}件あります。この金額で保存してもよろしいですか？`)) return;
             const btn = document.getElementById('saveChangesBtn');
             btn.textContent = '保存中...';
             btn.style.animation = 'none';

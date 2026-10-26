@@ -14,7 +14,7 @@ if not SQLALCHEMY_DATABASE_URL:
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -47,3 +47,12 @@ class Member(Base):
     
     student_id = Column(String, primary_key=True) # 学籍番号を主キーに
     shift_slots = Column(Integer, default=0)      # シフトのコマ数
+
+
+class ItemRegistration(Base):
+    __tablename__ = "item_registrations"
+
+    request_id = Column(String(36), primary_key=True)
+    payload_hash = Column(String(64), nullable=False)
+    item_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

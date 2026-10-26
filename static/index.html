@@ -36,7 +36,6 @@
 <body>
     <div class="container">
         <h1>学園祭レジ</h1>
-        <p style="font-size:12px;color:#666;">画面バージョン：2026-10-26.1</p>
         <p id="registrationStatus" role="status" aria-live="polite" style="white-space:pre-line;"></p>
         <div id="tabsContainer" class="tabs"><p>読み込み中...</p></div>
         <div id="tabContentsContainer"></div>
@@ -58,6 +57,15 @@
         let checkoutUncertain = false;
         let itemRegistrationBusy = false;
         let itemRegistrationUncertain = false;
+        let pendingRegistration = null;
+        const registrationFields = ['newName', 'newPrice', 'newMaterial', 'newCreator', 'newCategory', 'newRemarks', 'newFile'];
+
+        window.addEventListener('beforeunload', event => {
+            if (itemRegistrationBusy || pendingRegistration) {
+                event.preventDefault();
+                event.returnValue = '';
+            }
+        });
 
         async function loadItems() {
             try {
@@ -149,8 +157,103 @@
             status.scrollIntoView?.({block: 'nearest'});
         }
 
+        async function prepareProductImage(file) {
+            if (file.size <= 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return file;
+            const url = URL.createObjectURL(file);
+            try {
+                const img = await new Promise((resolve, reject) => {
+                    const image = new Image();
+                    image.onload = () => resolve(image);
+                    image.onerror = () => reject(new Error('画像を読み込めません。JPEGまたはPNG画像を選び直してください。'));
+                    image.src = url;
+                });
+                const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+                if (!blob) throw new Error('画像の縮小に失敗しました。別の画像を選んでください。');
+                return blob.size < file.size ? new File([blob], 'product.jpg', {type: 'image/jpeg'}) : file;
+            } finally { URL.revokeObjectURL(url); }
+        }
+
+        function updateRegistrationControls() {
+            for (const id of registrationFields) document.getElementById(id).disabled = itemRegistrationBusy || !!pendingRegistration;
+            const button = document.getElementById('registerItemButton');
+            button.disabled = itemRegistrationBusy;
+            button.textContent = itemRegistrationBusy ? '登録中…そのままお待ちください' :
+                pendingRegistration ? '保存結果を確認・同じ内容で再送' : '登録実行';
+        }
+
+        async function registrationCompleted() {
+            pendingRegistration = null;
+            itemRegistrationUncertain = false;
+            for (const id of registrationFields) document.getElementById(id).value = '';
+            showRegistrationStatus('登録しました。商品一覧を更新しています…');
+            await loadItems();
+            showRegistrationStatus('登録しました。一覧が読み込めない場合も、この商品を再登録する必要はありません。');
+        }
+
+        async function savedRegistrationExists() {
+            const response = await registrationFetch(`/item-registrations/${pendingRegistration.id}`, {cache: 'no-store'}, 15000);
+            if (response.ok) return true;
+            if (response.status === 404) return false;
+            throw new Error('確認できません');
+        }
+
+        async function registrationFetch(url, options, timeout = 60000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeout);
+            try { return await fetch(url, {...options, signal: controller.signal}); }
+            finally { clearTimeout(timer); }
+        }
+
+        async function sendPendingRegistration(checkFirst = false) {
+            try {
+                if (checkFirst && await savedRegistrationExists()) {
+                    await registrationCompleted();
+                    return;
+                }
+                const res = await registrationFetch('/items', {method: 'POST', body: pendingRegistration.body});
+                if (!res.ok) {
+                    if ([400, 413, 422].includes(res.status)) {
+                        pendingRegistration = null;
+                        itemRegistrationUncertain = false;
+                        showRegistrationStatus(res.status === 413 ? '画像は20MB以下にしてください。入力は残しています。' : '入力内容が受け付けられませんでした。入力は残していますので修正してください。', true);
+                        return;
+                    }
+                    throw new Error('保存結果不明');
+                }
+                await registrationCompleted();
+            } catch (error) {
+                // 応答だけ失われた場合は、保存済みか読み取りで確認する。
+                try {
+                    if (pendingRegistration && await savedRegistrationExists()) {
+                        await registrationCompleted();
+                        return;
+                    }
+                } catch (_) { /* 入力と同じ受付番号を保持し、利用者による再試行を待つ */ }
+                itemRegistrationUncertain = true;
+                showRegistrationStatus('保存結果を確認できません。入力と画像はこの画面に残しています。通信が戻ったら「保存結果を確認・同じ内容で再送」を押してください。二重登録は防止されます。ページ更新は不要です。', true);
+            } finally {
+                itemRegistrationBusy = false;
+                updateRegistrationControls();
+            }
+        }
+
         async function submitNewItem() {
-            if (itemRegistrationBusy || itemRegistrationUncertain) return;
+            if (itemRegistrationBusy) return;
+            if (pendingRegistration) {
+                itemRegistrationBusy = true;
+                updateRegistrationControls();
+                showRegistrationStatus('保存結果を確認しています…');
+                await sendPendingRegistration(true);
+                return;
+            }
             const name = document.getElementById('newName').value.trim();
             const errors = [];
             if (!name) errors.push('商品名を入力してください');
@@ -169,6 +272,23 @@
                 alert(message);
                 return;
             }
+            if (Number(document.getElementById('newMaterial').value) > Number(document.getElementById('newPrice').value) &&
+                !confirm('材料費が定価を上回っています。この金額で登録してもよろしいですか？')) {
+                showRegistrationStatus('登録を中止しました。金額を確認・修正してください。');
+                return;
+            }
+            itemRegistrationBusy = true;
+            updateRegistrationControls();
+            showRegistrationStatus('登録中…画像を準備しています');
+            let image;
+            try {
+                image = await prepareProductImage(fileInput.files[0]);
+            } catch (error) {
+                showRegistrationStatus(error.message, true);
+                itemRegistrationBusy = false;
+                updateRegistrationControls();
+                return;
+            }
             const formData = new FormData();
             formData.append('name', name);
             formData.append('price', document.getElementById('newPrice').value);
@@ -176,44 +296,11 @@
             formData.append('creator_id', document.getElementById('newCreator').value || 'unknown');
             formData.append('category', document.getElementById('newCategory').value || '一般');
             formData.append('remarks', document.getElementById('newRemarks').value || '');
-            formData.append('file', fileInput.files[0]);
-
-            const button = document.getElementById('registerItemButton');
-            itemRegistrationBusy = true;
-            button.disabled = true;
-            button.textContent = '登録中…そのままお待ちください';
-            showRegistrationStatus('登録中…そのままお待ちください');
-            try {
-                const res = await fetch('/items', { method: 'POST', body: formData });
-                if (!res.ok) {
-                    if (res.status >= 500) throw new Error('保存結果不明');
-                    showRegistrationStatus('登録が受け付けられませんでした。入力内容を確認してください。', true);
-                    alert('登録が受け付けられませんでした。商品名・定価・材料費・画像を確認してください。');
-                    return;
-                }
-            } catch (e) {
-                itemRegistrationUncertain = true;
-                showRegistrationStatus('保存結果不明：すでに登録されている可能性があります。管理画面の商品一覧を確認してください。再送は停止しています。', true);
-                alert('商品の保存結果を確認できません。すでに登録されている可能性があります。二重登録を防ぐため再送を停止しました。管理画面の商品一覧を確認してから、この画面を再読み込みしてください。');
-                return;
-            } finally {
-                if (!itemRegistrationUncertain) {
-                    itemRegistrationBusy = false;
-                    button.disabled = false;
-                    button.textContent = '登録実行';
-                } else {
-                    button.textContent = '保存結果不明：商品一覧を確認してください';
-                }
-            }
-            // 保存成功後の一覧取得失敗を、登録失敗として扱わない。
-            itemRegistrationBusy = true;
-            button.disabled = true;
-            button.textContent = '登録済み';
-            showRegistrationStatus('登録しました。商品一覧を更新しています…');
-            alert('登録しました');
-            await loadItems();
-            showRegistrationStatus('登録しました。一覧に反映されない場合はページを再読み込みしてください。');
-            itemRegistrationBusy = false;
+            formData.append('file', image);
+            const id = crypto.randomUUID();
+            formData.append('request_id', id);
+            pendingRegistration = {id, body: formData};
+            await sendPendingRegistration();
         }
 
         function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks, itemId = null) {
