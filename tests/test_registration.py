@@ -1,5 +1,6 @@
 """Isolated API tests. No production DB or Storage requests are made."""
 import os
+import atexit
 import tempfile
 import unittest
 import uuid
@@ -21,9 +22,12 @@ import database
 from fastapi.testclient import TestClient
 
 
-def tearDownModule():
+def cleanup():
     database.engine.dispose()
     scratch.cleanup()
+
+
+atexit.register(cleanup)
 
 
 class RegistrationTests(unittest.TestCase):
@@ -37,7 +41,7 @@ class RegistrationTests(unittest.TestCase):
 
     def register(self, key, name='test'):
         with TestClient(main.app) as client:
-            return client.post('/items', data={'name': name, 'price': '100', 'material_fee': '150', 'request_id': key}, files={'file': ('test.jpg', b'image', 'image/jpeg')})
+            return client.post('/items', data={'name': name, 'price': '100', 'material_fee': '150', 'creator_id': 'A123', 'request_id': key}, files={'file': ('test.jpg', b'image', 'image/jpeg')})
 
     def test_parallel_same_request_saved_once(self):
         key = str(uuid.uuid4())

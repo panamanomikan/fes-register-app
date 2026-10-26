@@ -37,6 +37,8 @@
     <div class="container">
         <h1>学園祭レジ</h1>
         <p id="registrationStatus" role="status" aria-live="polite" style="white-space:pre-line;"></p>
+        <p id="catalogStatus" role="status"></p>
+        <button type="button" onclick="loadItems()">商品一覧を更新</button>
         <div id="tabsContainer" class="tabs"><p>読み込み中...</p></div>
         <div id="tabContentsContainer"></div>
         <div class="cart">
@@ -47,12 +49,17 @@
             <p class="cart-total">¥<span id="totalDisplay">0</span></p>
         </div>
         <button class="action-btn btn-clear" onclick="clearCart()">カートを取消</button>
+        <p id="checkoutStatus" role="status" aria-live="polite" style="white-space:pre-line;"></p>
         <button id="checkoutButton" class="action-btn btn-checkout" onclick="checkout()">会計確定</button>
     </div>
 
+    <script src="/static/ui.js"></script>
     <script>
         let cart = {};
         let itemsData = [];
+        let pendingCheckout = null;
+        let catalogLoading = false;
+        let activeCategory = null;
         let checkoutBusy = false;
         let checkoutUncertain = false;
         let itemRegistrationBusy = false;
@@ -61,26 +68,33 @@
         const registrationFields = ['newName', 'newPrice', 'newMaterial', 'newCreator', 'newCategory', 'newRemarks', 'newFile'];
 
         window.addEventListener('beforeunload', event => {
-            if (itemRegistrationBusy || pendingRegistration) {
+            if (itemRegistrationBusy || pendingRegistration || pendingCheckout) {
                 event.preventDefault();
                 event.returnValue = '';
             }
         });
 
         async function loadItems() {
+            if (catalogLoading) return;
+            catalogLoading = true;
             try {
-                const response = await fetch('/items');
+                const response = await fetch('/items', {cache: 'no-store'});
                 if (!response.ok) throw new Error('商品取得失敗');
-                itemsData = await response.json();
-                renderTabsAndContents();
+                const latest = await response.json();
+                if (JSON.stringify(latest) !== JSON.stringify(itemsData) || !document.getElementById('tab-operations')) {
+                    itemsData = latest;
+                    renderTabsAndContents();
+                }
+                document.getElementById('catalogStatus').textContent = '商品一覧取得：' + new Date().toLocaleTimeString('ja-JP');
             } catch (error) { 
-                document.getElementById('tabsContainer').innerHTML = "<p style='color:red;'>通信エラー</p>";
-            }
+                document.getElementById('catalogStatus').textContent = '商品一覧の更新に失敗しました。古い表示の可能性があります。「商品一覧を更新」で再試行してください。';
+            } finally { catalogLoading = false; }
         }
 
         function renderTabsAndContents() {
             const tabsContainer = document.getElementById('tabsContainer');
             const contentsContainer = document.getElementById('tabContentsContainer');
+            const existingForm = document.getElementById('tab-operations');
             tabsContainer.innerHTML = '';
             contentsContainer.innerHTML = '';
             const categories = [...new Set(itemsData.map(item => item.category || '一般'))];
@@ -89,11 +103,13 @@
                 const btn = document.createElement('button');
                 btn.className = `tab-btn ${index === 0 ? 'active' : ''}`;
                 btn.textContent = category;
-                btn.onclick = () => switchTab(category);
+                btn.dataset.category = category;
+                btn.dataset.tabId = 'category-' + index;
+                btn.onclick = () => { activeCategory = category; switchTab('category-' + index); };
                 tabsContainer.appendChild(btn);
 
                 const content = document.createElement('div');
-                content.id = `tab-${category}`;
+                content.id = `tab-category-${index}`;
                 content.className = `tab-content ${index === 0 ? 'active' : ''}`;
                 const grid = document.createElement('div');
                 grid.className = 'item-grid';
@@ -106,11 +122,11 @@
                     if (isSaleActive) {
                         priceHtml = `<div><span class="original-price">¥${item.price}</span><span class="sale-price">¥${item.sale_price}</span></div>`;
                     }
-                    const imgSrc = item.image_url || 'https://via.placeholder.com/80?text=No+Image';
+                    const imgSrc = escapeHtml(safeImageUrl(item.image_url));
                     const card = document.createElement('div');
                     card.className = 'item-card';
                     card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.creator_id, item.material_fee, item.remarks, item.id);
-                    card.innerHTML = `${badgeHtml}<img src="${imgSrc}" class="item-img"><div class="item-name">${item.name}</div>${priceHtml}`;
+                    card.innerHTML = `${badgeHtml}<img src="${imgSrc}" class="item-img"><div class="item-name">${escapeHtml(item.name)}</div>${priceHtml}`;
                     grid.appendChild(card);
                 });
                 content.appendChild(grid);
@@ -121,19 +137,19 @@
             const opsBtn = document.createElement('button');
             opsBtn.className = `tab-btn`;
             opsBtn.textContent = "⚙️ 商品登録";
-            opsBtn.onclick = () => switchTab('operations');
+            opsBtn.dataset.tabId = 'operations';
+            opsBtn.onclick = () => { activeCategory = 'operations'; switchTab('operations'); };
             tabsContainer.appendChild(opsBtn);
-            const opsContent = document.createElement('div');
+            const opsContent = existingForm || document.createElement('div');
             opsContent.id = `tab-operations`;
             opsContent.className = `tab-content`;
-            opsContent.innerHTML = `
-                <button class="special-btn" onclick="addCustomItem()">＋ 金額を手動で入力する</button>
+            if (!existingForm) opsContent.innerHTML = `
                 <div id="addForm">
                     <h3 style="margin-top:0;">商品の新規登録</h3>
                     <input type="text" id="newName" placeholder="商品名">
                     <input type="number" id="newPrice" placeholder="定価 (税込)">
                     <input type="number" id="newMaterial" placeholder="材料費 (原価)">
-                    <input type="text" id="newCreator" placeholder="製作者 学籍番号">
+                    <input type="text" id="newCreator" placeholder="製作者 学籍番号（必須・半角英数字）">
                     <input type="text" id="newCategory" placeholder="カテゴリ（例：キーホルダー）">
                     <input type="text" id="newRemarks" placeholder="備考 (例: 色違いなど)">
                     画像：<input type="file" id="newFile" accept="image/*">
@@ -145,13 +161,15 @@
                     <button id="registerItemButton" onclick="submitNewItem()" style="background:#2196f3; color:white; border:none; padding:12px; width:100%; border-radius:4px; font-size:1.1em; margin-top:5px;">登録実行</button>
                 </div>`;
             contentsContainer.appendChild(opsContent);
+            const selected = categories.indexOf(activeCategory);
+            switchTab(activeCategory === 'operations' || !categories.length ? 'operations' : 'category-' + Math.max(0, selected));
         }
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(`tab-${tabId}`).classList.add('active');
-            const targetBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent === tabId || (tabId==='operations' && b.textContent==='⚙️ 商品登録'));
+            const targetBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.dataset.tabId === tabId);
             if(targetBtn) targetBtn.classList.add('active');
         }
 
@@ -283,12 +301,14 @@
                     errors.push(`${label}は0〜2147483647の整数で入力してください`);
                 }
             }
+            const creator = document.getElementById('newCreator').value;
+            if (!/^[A-Za-z0-9]{1,100}$/.test(creator)) errors.push('学籍番号は空白なしの半角英数字で入力してください');
             const fileInput = document.getElementById('newFile');
             if (!fileInput.files[0]) errors.push('画像を選択してください');
             if (errors.length) {
                 const message = errors.join('\n');
                 showRegistrationStatus(message, true);
-                alert(message);
+                uiNotice(message);
                 return;
             }
             const price = Number(document.getElementById('newPrice').value);
@@ -321,7 +341,7 @@
             formData.append('name', name);
             formData.append('price', document.getElementById('newPrice').value);
             formData.append('material_fee', document.getElementById('newMaterial').value);
-            formData.append('creator_id', document.getElementById('newCreator').value || 'unknown');
+            formData.append('creator_id', creator);
             formData.append('category', document.getElementById('newCategory').value || '一般');
             formData.append('remarks', document.getElementById('newRemarks').value || '');
             formData.append('file', image);
@@ -333,20 +353,13 @@
 
         function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks, itemId = null) {
             if (checkoutBusy || checkoutUncertain) return;
+            document.getElementById('checkoutStatus').textContent = '';
             const key = JSON.stringify([itemId, itemId === null ? itemName : '', price, isSale]);
             if (!cart[key]) {
                 cart[key] = { item_id: itemId, name: itemName, price: price, quantity: 0, is_sale: isSale, original_price: originalPrice, creator_id: creatorId, material_fee: materialFee, remarks: remarks };
             }
             cart[key].quantity += 1;
             updateDisplay();
-        }
-
-        function addCustomItem() {
-            const price = prompt("金額を入力:");
-            if (!price || !Number.isSafeInteger(Number(price)) || Number(price) <= 0) return alert('正の整数で金額を入力してください');
-            const name = prompt("商品名:", "手動入力");
-            if (!name) return;
-            addItem(name, Number(price), false, Number(price), 'manual', 0, '手動入力');
         }
 
         function clearCart() { if (checkoutBusy || checkoutUncertain) return; cart = {}; updateDisplay(); }
@@ -359,59 +372,72 @@
                 const item = cart[key];
                 total += item.price * item.quantity;
                 const li = document.createElement('li');
-                li.innerHTML = `${item.is_sale ? '<span style="color:red;">[SALE]</span>' : ''} ${item.name} × ${item.quantity} = ¥${item.price * item.quantity}`;
+                li.innerHTML = `${item.is_sale ? '<span style="color:red;">[SALE]</span>' : ''} ${escapeHtml(item.name)} × ${item.quantity} = ¥${item.price * item.quantity}`;
                 list.appendChild(li);
             }
             document.getElementById('totalDisplay').textContent = total;
         }
 
         async function checkout() {
-            if (checkoutBusy || checkoutUncertain) return;
-            let total = 0;
-            let itemsToSave = {};
-            for (const key in cart) {
-                const item = cart[key];
-                total += item.price * item.quantity;
-                itemsToSave[key] = {
-                    name: item.name,
-                    item_id: item.item_id,
-                    quantity: item.quantity,
-                    price: item.price,
-                    is_sale: item.is_sale,
-                    original_price: item.original_price,
-                    creator_id: item.creator_id,
-                    material_fee: item.material_fee,
-                    remarks: item.remarks
-                };
-            }
-            if (total === 0) return;
-            checkoutBusy = true;
+            if (checkoutBusy) return;
             const button = document.getElementById('checkoutButton');
+            const status = document.getElementById('checkoutStatus');
+            if (!pendingCheckout) {
+                const total = Object.values(cart).reduce((sum, item) => sum + item.price * item.quantity, 0);
+                if (!total) return uiNotice('合計0円の会計は記録しません。商品を選んでください。');
+                pendingCheckout = {request_id: crypto.randomUUID(), total_amount: total, items_json: JSON.stringify(cart)};
+            }
+            checkoutBusy = true;
+            checkoutUncertain = true; // Keep the cart immutable until this receipt is resolved.
             button.disabled = true;
+            status.textContent = '会計を保存しています…';
             button.textContent = '会計を保存中…';
             try {
-                const res = await fetch('/sales', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ total_amount: total, items_json: JSON.stringify(itemsToSave) })
-                });
-                if (!res.ok) {
-                    if (res.status >= 500) throw new Error('保存結果不明');
-                    alert('会計が受け付けられませんでした。入力内容を確認してください。');
-                    return;
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try {
+                        const res = await registrationFetch('/sales', {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(pendingCheckout)
+                        });
+                        if (!res.ok) {
+                            if (res.status >= 500 || res.status === 429) throw new Error('一時的な通信エラー');
+                            const error = await res.json().catch(() => ({}));
+                            const changed = error.detail?.code === 'catalog_changed';
+                            // These responses are returned before a sale is committed.
+                            pendingCheckout = null;
+                            checkoutUncertain = false;
+                            status.textContent = changed ? error.detail.message : '会計は保存されていません。入力内容を確認してください。古い画面の場合はページを更新してください。';
+                            if (changed) await loadItems();
+                            uiNotice(status.textContent);
+                            return;
+                        }
+                        const result = await res.json();
+                        pendingCheckout = null;
+                        checkoutUncertain = false;
+                        cart = {};
+                        updateDisplay();
+                        status.textContent = '会計登録が完了しました！ 取引番号：' + result.sale_id;
+                        uiNotice(status.textContent);
+                        return;
+                    } catch (error) {
+                        if (attempt === 1) throw error;
+                        status.textContent = '同じ受付番号で自動再確認しています…';
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
                 }
-                cart = {};
-                updateDisplay();
-                alert('会計完了！');
-            } catch (e) {
-                checkoutUncertain = true;
-                alert('保存結果を確認できません。二重記録を防ぐため再送を停止しました。管理者に取引履歴を確認してもらってください。');
+            } catch (_) {
+                status.textContent = '保存結果を確認できません。「保存結果を確認・再送」を押してください。同じ受付番号で再送するため二重登録しません。確認が終わるまでページを閉じないでください。';
+                uiNotice(status.textContent);
             } finally {
                 checkoutBusy = false;
-                button.disabled = checkoutUncertain;
-                button.textContent = checkoutUncertain ? '保存結果を管理者に確認してください' : '会計確定';
+                button.disabled = false;
+                button.textContent = pendingCheckout ? '保存結果を確認・再送' : '会計確定';
             }
         }
+        window.addEventListener('focus', () => { if (!document.hidden) loadItems(); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) loadItems(); });
+        // Refresh only while the page is visible; this is not a keep-alive service.
+        setInterval(() => { if (!document.hidden) loadItems(); }, 60000);
         window.onload = loadItems;
     </script>
 </body>

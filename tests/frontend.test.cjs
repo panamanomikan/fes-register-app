@@ -6,19 +6,27 @@ function page(file) {
     const alerts = [];
     const context = vm.createContext({
         window: {addEventListener() {}}, alert: msg => alerts.push(msg),
-        console, FormData, File, AbortController, setTimeout, clearTimeout, crypto: require('node:crypto').webcrypto, confirm: () => true,
+        console, URL, URLSearchParams, FormData, File, AbortController, setTimeout, clearTimeout, setInterval() {}, crypto: require('node:crypto').webcrypto, confirm: () => true,
         document: {
+            addEventListener() {},
+            querySelectorAll() { return []; },
+            querySelector(id) { return this.getElementById(id); },
             getElementById(id) {
-                if (!nodes.has(id)) nodes.set(id, {value: '', style: {}, classList: {add() {}}, appendChild() {}});
+                if (!nodes.has(id)) nodes.set(id, {value: '', style: {}, dataset: {}, classList: {add() {}}, appendChild() {}});
                 return nodes.get(id);
             },
             createElement: () => ({}),
         },
     });
     const source = readFileSync(file, 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+    vm.runInContext(readFileSync('static/ui.js', 'utf8'), context);
+    context.uiNotice = msg => alerts.push(msg);
+    context.uiConfirm = async () => true;
     vm.runInContext(source, context);
     return {context, nodes, alerts, run: code => vm.runInContext(code, context)};
 }
+let suiteFinished = false;
+process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfinished async test'); process.exitCode = 1; } });
 (async () => {
     const p = page('static/index.html');
     p.run("addItem('同名', 100, false, 100, 'A', 0, '', 1); addItem('同名', 200, true, 300, 'B', 0, '', 2)");
@@ -36,7 +44,7 @@ function page(file) {
     assert.equal(p.run('Object.keys(cart).length'), 2);
     assert.equal(body.total_amount, 300);
     assert.equal(Object.keys(JSON.parse(body.items_json)).length, 2);
-    finish({ok: true});
+    finish({ok: true, json: async () => ({sale_id: 123})});
     await first;
     assert.equal(p.run('Object.keys(cart).length'), 0);
     p.run("addItem('商品', 100, false, 100, '', 0, '', 1)");
@@ -47,6 +55,9 @@ function page(file) {
     const a = page('static/dashboard.html');
     a.run('dirtyItems.add(1); isDirty = true');
     a.context.document.getElementById('cat-1').value = 'アクセサリー';
+    a.context.document.getElementById('c-1').value = 'A123';
+    a.context.document.getElementById('p-1').value = '100';
+    a.context.document.getElementById('m-1').value = '0';
     let sent;
     a.context.fetch = async (url, options) => { sent = options.body; return {ok: false}; };
     await a.run('saveAllChanges()');
@@ -56,7 +67,7 @@ function page(file) {
     assert(!a.alerts.includes('すべての変更を保存しました！'));
     function registrationPage() {
         const p = page('static/index.html');
-        for (const [id, value] of Object.entries({newName: '作品', newPrice: '100', newMaterial: '0'})) {
+        for (const [id, value] of Object.entries({newName: '作品', newCreator: 'A123', newPrice: '100', newMaterial: '0'})) {
             p.context.document.getElementById(id).value = value;
         }
         p.context.document.getElementById('newFile').files = [new Blob(['image'])];
@@ -65,7 +76,7 @@ function page(file) {
     const r = registrationPage();
     let posts = 0, resolvePost;
     r.context.fetch = async (url, options) => {
-        if (!options) throw Error('一覧取得失敗');
+        if (!options || options.method !== 'POST') throw Error('一覧取得失敗');
         posts++;
         return new Promise(resolve => { resolvePost = resolve; });
     };
@@ -125,14 +136,14 @@ function page(file) {
     cost.context.document.getElementById('newMaterial').value = '200';
     await cost.run('submitNewItem(oldApproval)');
     assert.equal(costPosts, 0);
-    cost.context.fetch = async (url, options) => { if (!options) throw Error('一覧'); costPosts++; return {ok: true}; };
+    cost.context.fetch = async (url, options) => { if (!options || options.method !== 'POST') throw Error('一覧'); costPosts++; return {ok: true}; };
     await cost.run('submitNewItem(pendingCostConfirmation)');
     assert.equal(costPosts, 1);
     const recovered = registrationPage();
     let recoveredPosts = 0;
     recovered.context.fetch = async (url, options) => {
         if (url.startsWith('/item-registrations/')) return {ok: true};
-        if (!options) throw Error('一覧');
+        if (!options || options.method !== 'POST') throw Error('一覧');
         recoveredPosts++;
         throw Error('response lost after commit');
     };
@@ -144,7 +155,7 @@ function page(file) {
     const automaticIds = [];
     automatic.context.fetch = async (url, options) => {
         if (url.startsWith('/item-registrations/')) return {ok: false, status: 404};
-        if (!options) throw Error('一覧');
+        if (!options || options.method !== 'POST') throw Error('一覧');
         automaticIds.push(options.body.get('request_id'));
         if (automaticIds.length === 1) return {ok: false, status: 503};
         return {ok: true};
@@ -171,10 +182,44 @@ function page(file) {
     assert(revoked);
     a.context.document.getElementById('p-1').value = '100';
     a.context.document.getElementById('m-1').value = '200';
-    a.context.confirm = () => false;
+    a.context.uiConfirm = async () => false;
     a.context.fetch = () => { throw Error('キャンセル後に送信してはいけない'); };
     await a.run('saveAllChanges()');
     assert.equal(a.run('dirtyItems.size'), 1);
+    const retryIds = [];
+    p.context.fetch = async (url, options) => {
+        retryIds.push(JSON.parse(options.body).request_id);
+        if (retryIds.length === 1) throw Error('response lost');
+        return {ok:true, json:async () => ({sale_id:456})};
+    };
+    const pendingId = p.run('pendingCheckout.request_id');
+    await p.run('checkout()');
+    assert.equal(retryIds.length, 2);
+    assert(retryIds.every(id => id === pendingId));
+    assert.equal(p.run('pendingCheckout'), null);
+    assert.match(p.context.document.getElementById('checkoutStatus').textContent, /456/);
+    assert.match(p.alerts.at(-1), /完了/);
+    assert.equal(p.run("escapeHtml('<img onerror=evil>')"), '&lt;img onerror=evil&gt;');
+    assert.equal(p.run("safeImageUrl('javascript:evil()')"), '');
+    const invalidId = registrationPage();
+    invalidId.context.document.getElementById('newCreator').value = 'Ａ 123';
+    invalidId.context.fetch = () => { throw Error('must not send'); };
+    await invalidId.run('submitNewItem()');
+    assert.match(invalidId.alerts.at(-1), /学籍番号/);
+    const changed = page('static/index.html');
+    changed.run("addItem('商品', 100, false, 100, 'A', 0, '', 1)");
+    changed.context.fetch = async url => url === '/sales'
+        ? {ok:false,status:409,json:async()=>({detail:{code:'catalog_changed',message:'価格変更・選び直してください'}})}
+        : {ok:false,status:503};
+    await changed.run('checkout()');
+    assert.equal(changed.run('pendingCheckout'), null);
+    assert.equal(changed.run('checkoutUncertain'), false);
+    assert.equal(changed.run('Object.keys(cart).length'), 1);
+    assert.match(changed.alerts.at(-1), /価格変更/);
+    for (const file of ['static/index.html','static/dashboard.html']) {
+        assert(!/\b(?:alert|confirm|prompt)\s*\(/.test(readFileSync(file,'utf8')));
+    }
     console.log('PASS: 商品登録の必須入力、連打防止、同じ受付番号で再送、入力と画像保持、保存結果照会、材料費の確認');
-    console.log('PASS: 同名商品、合計、連打防止、会計中の変更防止、通信不明時の再送停止、カテゴリ保存、保存失敗時の入力保持');
+    console.log('PASS: 同名商品、合計、連打防止、会計中の変更防止、通信不明時の受付番号保持、カテゴリ保存、保存失敗時の入力保持');
+    suiteFinished = true;
 })().catch(error => { console.error(error); process.exitCode = 1; });

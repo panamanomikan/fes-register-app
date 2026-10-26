@@ -1,6 +1,7 @@
 """Validate request rules without importing the app or touching the production DB."""
 import ast
 import json
+import uuid
 from pathlib import Path
 import unittest
 
@@ -9,20 +10,20 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 source = ast.parse(Path('main.py').read_text(encoding='utf-8'))
 definitions = ast.Module(body=[node for node in source.body if isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name in {'SaleCreate', 'MemberUpdate', 'validate_item'}], type_ignores=[])
-scope = dict(json=json, BaseModel=BaseModel, Field=Field, model_validator=model_validator, HTTPException=HTTPException)
+scope = dict(json=json, uuid=uuid, BaseModel=BaseModel, Field=Field, model_validator=model_validator, HTTPException=HTTPException)
 exec(compile(definitions, 'main.py', 'exec'), scope)
 
 
 class ValidationTests(unittest.TestCase):
     def test_normal_and_sale_details(self):
         details = {'normal': {'price': 500, 'quantity': 2}, 'sale': {'price': 300, 'quantity': 1, 'original_price': 500, 'is_sale': True}}
-        sale = scope['SaleCreate'](total_amount=1300, items_json=json.dumps(details))
+        sale = scope['SaleCreate'](request_id=uuid.uuid4(), total_amount=1300, items_json=json.dumps(details))
         self.assertEqual(sale.total_amount, 1300)
 
     def test_invalid_sales(self):
         for details, total in [('broken', 100), ('{}', 100), ('[]', 100), ('{"a": 1}', 100), ('{"a":{"price":-1,"quantity":1}}', 100), ('{"a":{"price":100,"quantity":0}}', 100), ('{"a":{"price":100,"quantity":1}}', 200)]:
             with self.subTest(details=details), self.assertRaises(ValidationError):
-                scope['SaleCreate'](total_amount=total, items_json=details)
+                scope['SaleCreate'](request_id=uuid.uuid4(), total_amount=total, items_json=details)
 
     def test_item_validation(self):
         scope['validate_item']('商品', 500, 100, 0, True)

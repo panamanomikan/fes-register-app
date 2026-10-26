@@ -1,15 +1,14 @@
 import os
 import uuid
 import json
-import csv
-import math
+import re
+from datetime import date
 import hashlib
 import logging
-from io import StringIO
-from typing import Optional, List
+from typing import Optional
 from fastapi import FastAPI, Depends, Form, UploadFile, File, HTTPException, status
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -17,9 +16,11 @@ from pydantic import BaseModel, Field, model_validator
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import database
+import reporting
+from sales_service import record_sale
 
 load_dotenv()
-database.Base.metadata.create_all(bind=database.engine)
+database.initialize_schema()
 
 app = FastAPI()
 security = HTTPBasic(auto_error=False)
@@ -51,7 +52,8 @@ def get_db():
 
 # Pydanticモデル
 class SaleCreate(BaseModel):
-    total_amount: int = Field(gt=0, le=2147483647)
+    request_id: uuid.UUID
+    total_amount: int = Field(strict=True, gt=0, le=2147483647)
     items_json: str
 
     @model_validator(mode='after')
@@ -75,8 +77,13 @@ class SaleCreate(BaseModel):
         return self
 
 class MemberUpdate(BaseModel):
-    student_id: str
-    shift_slots: int = Field(ge=0, le=2147483647)
+    student_id: str = Field(pattern=r'^[A-Za-z0-9]+$', max_length=100)
+    shift_slots: int = Field(strict=True, ge=0, le=2147483647)
+
+
+def validate_student_id(value):
+    if not value or not re.fullmatch(r'[A-Za-z0-9]{1,100}', value):
+        raise HTTPException(422, '学籍番号は空白なしの半角英数字で入力してください')
 
 
 def validate_item(name, price, material_fee, sale_price=None, is_sale=False):
@@ -86,6 +93,8 @@ def validate_item(name, price, material_fee, sale_price=None, is_sale=False):
         raise HTTPException(status_code=422, detail='セール価格は0以上にしてください')
     if is_sale and sale_price is None:
         raise HTTPException(status_code=422, detail='セール有効時はセール価格を入力してください')
+    if any(value is not None and value > 2147483647 for value in (price, material_fee, sale_price)):
+        raise HTTPException(status_code=422, detail='金額が大きすぎます')
 
 @app.get("/items")
 def read_items(db: Session = Depends(get_db)):
@@ -96,14 +105,15 @@ def create_item(
     name: str = Form(...),
     price: int = Form(...),
     category: str = Form("一般"),
-    creator_id: str = Form(None),
-    material_fee: int = Form(0),
+    creator_id: str = Form(...),
+    material_fee: int = Form(...),
     remarks: str = Form(""),
     file: UploadFile = File(...),
     request_id: Optional[uuid.UUID] = Form(None),
     db: Session = Depends(get_db)
 ):
     validate_item(name, price, material_fee)
+    validate_student_id(creator_id)
     # 同期I/OはFastAPIのワーカースレッドで処理する。
     content = file.file.read(20 * 1024 * 1024 + 1)
     if len(content) > 20 * 1024 * 1024:
@@ -184,6 +194,7 @@ def update_item_full(
     admin: str = Depends(get_admin_user)
 ):
     validate_item(name, price, material_fee, sale_price, is_sale)
+    validate_student_id(creator_id)
     db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
     if not db_item: raise HTTPException(status_code=404, detail="商品が見つかりません")
 
@@ -243,115 +254,34 @@ def delete_member(student_id: str, db: Session = Depends(get_db), admin: str = D
 # --- 売上・CSV関連 ---
 @app.post("/sales")
 def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
-    db_sale = database.Sale(total_amount=sale.total_amount, items_json=sale.items_json)
-    db.add(db_sale)
-    db.commit()
-    return {"message": "Recorded"}
+    return record_sale(db, sale)
 
 @app.get("/sales")
-def read_sales(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    return db.query(database.Sale).order_by(database.Sale.id).all()
+def read_sales(start: Optional[date] = None, end: Optional[date] = None,
+               db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.selected_sales(db, start, end)
 
-# CSV 1: 全体集計 (改修版)
+@app.get("/reports/summary")
+def report_summary(start: Optional[date] = None, end: Optional[date] = None,
+                   db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    sales = reporting.selected_sales(db, start, end)
+    result = reporting.calculate(sales, db.query(database.Member).all())
+    result.pop('products')
+    result['sales'] = sales
+    return result
+
 @app.get("/export/overall")
-def export_overall_csv(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    sales = db.query(database.Sale).all()
-    summary = {}
-    total_revenue = 0
-    total_group_return = 0
+def export_overall_csv(start: Optional[date] = None, end: Optional[date] = None,
+                      db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.export(db, 'overall', start, end)
 
-    for s in sales:
-        if not s.items_json: continue
-        items = json.loads(s.items_json)
-        for name, info in items.items():
-            name = info.get('name', name) if isinstance(info, dict) else name
-            if isinstance(info, int):
-                info = {'quantity': info, 'price': 0}
-            price = info.get('price', 0)
-            qty = info.get('quantity', 0)
-            creator_id = info.get('creator_id', 'unknown')
-            cost = info.get('material_fee', 0)
-            remarks = info.get('remarks', '')
-            is_sale = info.get('is_sale', False)
-            
-            # 作品名の頭に「【セール】」を付与して区別する
-            display_name = f"【セール】{name}" if is_sale else name
-            
-            key = (creator_id, display_name, cost, price, remarks)
-            summary[key] = summary.get(key, 0) + qty
-            total_revenue += price * qty
-            total_group_return += math.floor(price * qty * 0.1)
-
-    output = StringIO()
-    output.write('\ufeff') # BOMの付与
-    writer = csv.writer(output)
-    writer.writerow(["製作者学籍番号", "作品名", "材料費", "販売価格", "作者利益", "シフト代", "団体還元", "個数", "備考", "売り上げ", "総売り上げ", "団体還元送金額"])
-    
-    first_row = True
-    for key, qty in summary.items():
-        creator_id, name, cost, price, remarks = key
-        row = [
-            creator_id, name, f"¥{cost}", f"¥{price}",
-            f"¥{math.floor(price * 0.7)}", f"¥{math.floor(price * 0.2)}", f"¥{math.floor(price * 0.1)}",
-            qty, remarks, f"¥{price * qty}"
-        ]
-        if first_row:
-            row.extend([f"¥{total_revenue}", f"¥{total_group_return}"])
-            first_row = False
-        writer.writerow(row)
-
-    res = StreamingResponse(iter([output.getvalue()]), media_type="text/csv")
-    res.headers["Content-Disposition"] = "attachment; filename=overall_report.csv"
-    return res
-
-# CSV 2: 個人分配集計
 @app.get("/export/distribution")
-def export_distribution_csv(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    members = db.query(database.Member).all()
-    sales = db.query(database.Sale).all()
-    
-    total_shift_pool = 0
-    total_slots = sum([m.shift_slots for m in members])
-    author_profits = {}
-
-    for s in sales:
-        if not s.items_json: continue
-        items = json.loads(s.items_json)
-        for name, info in items.items():
-            if isinstance(info, int):
-                info = {'quantity': info, 'price': 0}
-            price = info.get('price', 0)
-            qty = info.get('quantity', 0)
-            creator_id = info.get('creator_id', 'unknown')
-            
-            total_shift_pool += (price * qty * 0.2)
-            profit = math.floor(price * qty * 0.7)
-            author_profits[creator_id] = author_profits.get(creator_id, 0) + profit
-
-    pay_per_slot = (total_shift_pool / total_slots) if total_slots > 0 else 0
-
-    output = StringIO()
-    output.write('\ufeff')
-    writer = csv.writer(output)
-    writer.writerow(["学籍番号", "シフトコマ数", "シフト代金", "作者利益", "総収入"])
-
-    processed_ids = set()
-    for m in members:
-        shift_pay = math.floor(pay_per_slot * m.shift_slots)
-        author_profit = author_profits.get(m.student_id, 0)
-        writer.writerow([m.student_id, m.shift_slots, shift_pay, author_profit, shift_pay + author_profit])
-        processed_ids.add(m.student_id)
-
-    for cid, profit in author_profits.items():
-        if cid not in processed_ids and cid != 'unknown':
-            writer.writerow([cid, 0, 0, profit, profit])
-
-    res = StreamingResponse(iter([output.getvalue()]), media_type="text/csv")
-    res.headers["Content-Disposition"] = "attachment; filename=distribution_report.csv"
-    return res
+def export_distribution_csv(start: Optional[date] = None, end: Optional[date] = None,
+                           db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.export(db, 'distribution', start, end)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def read_root(): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
 @app.get("/admin")
-def read_dashboard(admin: str = Depends(get_admin_user)): return FileResponse("static/dashboard.html")
+def read_dashboard(admin: str = Depends(get_admin_user)): return FileResponse("static/dashboard.html", headers={"Cache-Control": "no-store"})
