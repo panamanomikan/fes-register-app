@@ -271,14 +271,25 @@ def report_summary(start: Optional[date] = None, end: Optional[date] = None,
     return result
 
 @app.get("/export/overall")
-def export_overall_csv(start: Optional[date] = None, end: Optional[date] = None,
-                      db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    return reporting.export(db, 'overall', start, end)
+def export_overall_csv(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.export(db, 'overall')
 
 @app.get("/export/distribution")
-def export_distribution_csv(start: Optional[date] = None, end: Optional[date] = None,
-                           db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    return reporting.export(db, 'distribution', start, end)
+def export_distribution_csv(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.export(db, 'distribution')
+
+@app.get('/export/period')
+def export_period_csv(start: date, end: date, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.export(db, 'period', start, end)
+
+@app.get('/reports/dashboard')
+def dashboard_report(start: date, end: date, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    return reporting.dashboard(db, start, end)
+
+@app.get('/export/excel')
+def export_excel(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    import excel_report
+    return excel_report.export(db)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")

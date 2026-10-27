@@ -71,12 +71,31 @@ def calculate(sales, members):
 
 
 def summary_rows(report, start, end):
-    return [[], ['対象期間 (JST)', str(start or '全期間'), str(end or '全期間')],
+    return [[], ['対象期間 (JST)', period_label(start, end)],
         ['総売上', report['revenue']], ['団体還元（期間合計の10%・円未満切捨て）', report['group']],
         ['個人支払合計', sum(p['total'] for p in report['people'])],
         ['未配分残額（端数・配分先未設定分を含む）', report['unallocated']],
         ['計算方針', '個人ごと・期間合計で作者70%とシフト20%をそれぞれ円未満切捨て。材料費は差し引かない。'],
         ['注意', '日別の支払額を合算した値と、全期間で一括計算した支払額は端数により異なる。精算は同じ期間で統一。']]
+
+
+def period_label(start=None, end=None):
+    if not start and not end:
+        return '全期間'
+    if start == end:
+        return str(start)
+    return f'{start or "開始指定なし"} ～ {end or "終了指定なし"}'
+
+
+def dashboard(db, start, end):
+    if start > end:
+        raise HTTPException(422, '開始日は終了日以前にしてください')
+    sales = selected_sales(db)
+    period = [s for s in sales if start <= (s['created_at'] + timedelta(hours=9)).date() <= end]
+    def totals(records):
+        active = [s for s in records if not s['voided']]
+        return dict(revenue=sum(s['total_amount'] for s in active), count=len(active))
+    return dict(overall=totals(sales), period={**totals(period), 'sales': period}, label=period_label(start, end))
 
 
 def csv_response(rows, filename):
@@ -92,10 +111,12 @@ def csv_response(rows, filename):
 
 def export(db, kind, start=None, end=None):
     report = calculate(selected_sales(db, start, end), db.query(database.Member).all())
-    if kind == 'overall':
+    if kind in ('overall', 'period'):
         rows = [['製作者学籍番号', '作品名', '販売単価', '材料費（控除なし）', '備考', 'セール', '個数', '売上']]
         rows += [[*key, qty, key[2]*qty] for key, qty in report['products'].items()]
     else:
         rows = [['学籍番号', 'シフトコマ数', 'シフト代金', '作者利益', '総収入']]
         rows += [[p['student_id'], p['shift_slots'], p['shift'], p['author'], p['total']] for p in report['people']]
-    return csv_response(rows + summary_rows(report, start, end), kind + '_report')
+    summary = ([[], ['対象期間 (JST)', period_label(start, end)], ['総売上', report['revenue']],
+                ['会計件数', report['count']]] if kind == 'period' else summary_rows(report, start, end))
+    return csv_response(rows + summary, kind + '_report')

@@ -35,32 +35,52 @@
 
         .export-btn { width: 100%; padding: 15px; background: #4caf50; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1.1em; margin-bottom: 15px; }
         .export-btn-blue { background: #2196f3; }
+        .period-panel { border:1px solid #cbd5e1; }
+        .period-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+        .period-fields label { display:flex; flex-direction:column; gap:6px; color:#475569; font-size:0.9em; min-width:0; }
+        .period-fields input { box-sizing:border-box; width:100%; min-width:0; padding:12px 8px; border:1px solid #bcc7d6; border-radius:8px; background:#fff; font:inherit; font-size:16px; }
+        .period-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+        .period-actions button { padding:11px 16px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font:inherit; cursor:pointer; }
+        .period-actions .primary { background:#1a73e8; color:white; border-color:#1a73e8; }
+        .period-stats { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; border-top:1px solid #e2e8f0; padding-top:14px; margin-top:14px; }
+        .period-stats p { margin:0 0 4px; color:#475569; font-size:0.9em; }
+        .period-stats strong { font-size:1.4em; color:#164e63; }
+        .report-note { font-size:0.85em; color:#64748b; line-height:1.6; }
+        .report-section { border:1px solid #dbe3ec; border-radius:10px; padding:14px; margin:12px 0; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 style="font-size: 1.3em; text-align: center;">売上管理ダッシュボード（幹部用）</h1>
         
-        <div class="card">
-            <label>開始日 (JST) <input type="date" id="periodStart"></label>
-            <label>終了日 (JST) <input type="date" id="periodEnd"></label>
-            <button onclick="loadDashboard()">この期間を表示</button>
-            <button onclick="setToday()">今日</button>
-            <button onclick="setAllPeriod()">全期間</button>
-            <p id="reportStatus" role="status">未取得</p>
-            <p id="distributionSummary"></p>
-            <p>作者70%・シフト20%を個人ごとの期間合計で円未満切捨て。団体10%。残額は別表示。精算する期間を統一してください。</p>
-        </div>
         <div class="stat-grid">
             <div class="card" style="margin-bottom: 0;">
-                <p style="margin:0;">総売上</p>
+                <p style="margin:0;">総売上（全期間）</p>
                 <div class="stat-value">¥<span id="totalRevenue">未取得</span></div>
             </div>
             <div class="card" style="margin-bottom: 0;">
-                <p style="margin:0;">決済件数</p>
+                <p style="margin:0;">会計件数（全期間）</p>
                 <div class="stat-value"><span id="transactionCount">未取得</span>件</div>
             </div>
         </div>
+
+        <section class="card period-panel" aria-label="指定期間の売上">
+            <h2 style="font-size:1.1em;margin:0 0 14px;">指定期間の売上</h2>
+            <div class="period-fields">
+                <label>開始日（日本時間）<input type="date" id="periodStart"></label>
+                <label>終了日（日本時間）<input type="date" id="periodEnd"></label>
+            </div>
+            <div class="period-actions">
+                <button class="primary" onclick="loadDashboard()">この期間を表示</button>
+                <button onclick="setToday()">今日</button>
+            </div>
+            <div class="period-stats">
+                <div><p>指定期間の売上</p><strong>¥<span id="periodRevenue">未取得</span></strong></div>
+                <div><p>指定期間の会計件数</p><strong><span id="periodCount">未取得</span>件</strong></div>
+            </div>
+            <p id="reportStatus" class="report-note" role="status">未取得</p>
+            <p class="report-note">日付は指定期間の売上・取引履歴・指定期間レポートに適用します。全期間のレポートは変わりません。</p>
+        </section>
 
         <button class="refresh-btn" onclick="refreshAll()">🔄 最新の情報に更新</button>
 
@@ -110,7 +130,7 @@
         </div>
 
         <div id="tab-history" class="tab-content card">
-            <h3 style="margin-top:0;">最近の取引履歴</h3>
+            <h3 style="margin-top:0;">指定期間の取引履歴</h3>
             <div class="table-responsive">
                 <table id="salesTable">
                     <thead>
@@ -122,10 +142,19 @@
         </div>
 
         <div id="tab-export" class="tab-content card">
-            <h3 style="margin-top:0;">CSVデータ出力</h3>
-            <p style="font-size: 0.9em; color: #555;">目的に合わせてExcelにコピペできるデータをダウンロードします。</p>
-            <button class="export-btn" onclick="downloadCSV('/export/overall', '全体の売上・利益集計.csv')">📊 全体レポート集計 (全商品分)</button>
-            <button class="export-btn export-btn-blue" onclick="downloadCSV('/export/distribution', '個人分配・シフト代計算.csv')">💰 個人分配・シフト代計算 (メンバー別)</button>
+            <h3 style="margin-top:0;">レポート出力</h3>
+            <section class="report-section">
+                <h4>全期間のレポート</h4>
+                <p class="report-note">上の日付指定にかかわらず、全期間を出力します。</p>
+                <button class="export-btn" onclick="downloadCSV('/export/overall', '全期間_商品別売上.csv')">商品別売上 CSV（全期間）</button>
+                <button class="export-btn export-btn-blue" onclick="downloadCSV('/export/distribution', '全期間_個人分配.csv')">個人分配 CSV（全期間）</button>
+                <button class="export-btn export-btn-blue" onclick="downloadCSV('/export/excel', '全期間レポート.xlsx')">Excel（商品別売上・個人分配／数式付き）</button>
+            </section>
+            <section class="report-section">
+                <h4>指定期間のレポート</h4>
+                <p class="report-note" id="periodExportLabel">先に期間を表示してください。</p>
+                <button class="export-btn" onclick="downloadCSV('/export/period', '指定期間_商品別売上.csv', true)">商品別売上 CSV（指定期間）</button>
+            </section>
         </div>
 
     </div>
@@ -140,7 +169,8 @@
             const params = new URLSearchParams();
             const start = document.getElementById('periodStart').value;
             const end = document.getElementById('periodEnd').value;
-            if (start && end && start > end) throw new Error('開始日は終了日以前にしてください');
+            if (!start || !end) throw new Error('開始日と終了日を選んでください');
+            if (start > end) throw new Error('開始日は終了日以前にしてください');
             if (start) params.set('start', start);
             if (end) params.set('end', end);
             return params.size ? '?' + params.toString() : '';
@@ -149,11 +179,6 @@
             const today = new Date().toLocaleDateString('sv-SE', {timeZone: 'Asia/Tokyo'});
             document.getElementById('periodStart').value = today;
             document.getElementById('periodEnd').value = today;
-            loadDashboard();
-        }
-        function setAllPeriod() {
-            document.getElementById('periodStart').value = '';
-            document.getElementById('periodEnd').value = '';
             loadDashboard();
         }
 
@@ -199,10 +224,10 @@
             try {
                 const query = periodQuery();
                 status.textContent = '売上を取得中…';
-                const summaryResponse = await fetch('/reports/summary' + query, {cache:'no-store'});
+                const summaryResponse = await fetch('/reports/dashboard' + query, {cache:'no-store'});
                 if (!summaryResponse.ok) throw new Error('分配を取得できません');
                 const summary = await summaryResponse.json();
-                const data = summary.sales;
+                const data = summary.period.sales;
                 let total = 0;
                 const tbody = document.querySelector('#salesTable tbody');
                 tbody.innerHTML = ''; 
@@ -243,12 +268,14 @@
                     }).join('<br>');
                     tbody.innerHTML += `<tr><td>${escapeHtml(sale.id)}</td><td style="font-size:0.85em;">${escapeHtml(timeStr)}</td><td>${itemsText}</td><td style="font-weight:bold;">¥${escapeHtml(sale.total_amount)}${sale.voided ? '（取消済）' : ''}</td><td>${correctionText || 'なし'}</td></tr>`;
                 });
-                document.getElementById('totalRevenue').textContent = total.toLocaleString();
-                document.getElementById('transactionCount').textContent = data.filter(s => !s.voided).length;
+                document.getElementById('totalRevenue').textContent = summary.overall.revenue.toLocaleString();
+                document.getElementById('periodRevenue').textContent = summary.period.revenue.toLocaleString();
+                document.getElementById('transactionCount').textContent = summary.overall.count;
+                document.getElementById('periodCount').textContent = summary.period.count;
                 appliedPeriod = query;
-                document.getElementById('distributionSummary').textContent = '団体還元：' + summary.group + '円／個人支払合計：' + summary.people.reduce((a,p) => a + p.total, 0) + '円／未配分残額：' + summary.unallocated + '円';
+                document.getElementById('periodExportLabel').textContent = '対象：' + summary.label + '（日本時間）';
                 status.dataset.lastSuccess = new Date().toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'});
-                status.textContent = '表示期間：' + (query ? query.replace('?', '') : '全期間') + '／最終取得：' + status.dataset.lastSuccess;
+                status.textContent = '表示期間：' + summary.label + '／最終取得：' + status.dataset.lastSuccess;
             } catch (e) {
                 status.textContent = '更新失敗：' + e.message + '。表示は古い可能性があります。最終成功：' + (status.dataset.lastSuccess || 'なし');
                 uiNotice(status.textContent);
@@ -427,12 +454,17 @@
         }
 
         // 【修正】credentials: 'include' を追加して、Basic認証の情報をサーバーに送信する
-        async function downloadCSV(url, filename) {
+        async function downloadCSV(url, filename, periodOnly = false) {
             try {
-                if (reportLoading) return uiNotice('集計の取得が終わるまでお待ちください');
-                const requested = periodQuery();
-                if (requested !== appliedPeriod || !document.getElementById('reportStatus').dataset.lastSuccess) return uiNotice('先に「この期間を表示」を押して集計を確認してください');
-                const res = await fetch(url + appliedPeriod, { credentials: 'include', cache:'no-store' });
+                let query = '';
+                if (periodOnly) {
+                    if (reportLoading) return uiNotice('集計の取得が終わるまでお待ちください');
+                    const requested = periodQuery();
+                    if (requested !== appliedPeriod || !document.getElementById('reportStatus').dataset.lastSuccess) return uiNotice('先に「この期間を表示」を押して集計を確認してください');
+                    query = appliedPeriod;
+                    filename = document.getElementById('periodStart').value + '_' + document.getElementById('periodEnd').value + '_' + filename;
+                }
+                const res = await fetch(url + query, { credentials: 'include', cache:'no-store' });
                 if (!res.ok) throw new Error("Network Error");
                 const blob = await res.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
@@ -445,7 +477,7 @@
                 window.URL.revokeObjectURL(downloadUrl);
                 a.remove();
             } catch (e) {
-                uiNotice("CSVの出力に失敗しました。");
+                uiNotice("レポートの出力に失敗しました。");
             }
         }
 
@@ -460,7 +492,12 @@
             loadMembers();
         }
         
-        window.onload = refreshAll;
+        window.onload = () => {
+            const today = new Date().toLocaleDateString('sv-SE', {timeZone:'Asia/Tokyo'});
+            document.getElementById('periodStart').value = today;
+            document.getElementById('periodEnd').value = today;
+            refreshAll();
+        };
     </script>
 </body>
 </html>
