@@ -286,11 +286,6 @@ def export_period_csv(start: date, end: date, db: Session = Depends(get_db), adm
 def dashboard_report(start: date, end: date, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     return reporting.dashboard(db, start, end)
 
-@app.get('/export/excel')
-def export_excel(db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    import excel_report
-    return excel_report.export(db)
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def read_root(): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
