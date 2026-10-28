@@ -72,6 +72,20 @@ class SalesTests(unittest.TestCase):
             db.commit()
         self.assertEqual(self.post(self.payload()).status_code, 409)
 
+    def test_register_account_can_checkout_but_cannot_administer(self):
+        auth = (isolated.main.REGISTER_USERNAME, isolated.main.REGISTER_PASSWORD)
+        with TestClient(isolated.main.app) as client:
+            self.assertEqual(client.get('/',auth=auth).status_code,200)
+            payload = self.payload()
+            first = client.post('/sales',json=payload,auth=auth)
+            self.assertEqual(first.status_code,200)
+            self.assertEqual(client.post('/sales',json=payload,auth=auth).json(),first.json())
+            for path in ('/admin','/admin/items','/members','/sales','/reports/summary','/export/overall','/export/distribution'):
+                self.assertEqual(client.get(path,auth=auth).status_code,401,path)
+            self.assertEqual(client.delete('/items/'+str(self.item_id),auth=auth).status_code,401)
+            self.assertEqual(client.post('/members',json={'student_id':'A123','shift_slots':1},auth=auth).status_code,401)
+            self.assertEqual(client.put('/items/'+str(self.item_id),data={'name':'changed','price':1,'creator_id':'A123'},auth=auth).status_code,401)
+
     def test_public_catalog_privacy_and_server_side_author(self):
         auth = (isolated.main.ADMIN_USERNAME, isolated.main.ADMIN_PASSWORD)
         with TestClient(isolated.main.app) as client:

@@ -36,6 +36,19 @@ supabase: Client = create_client(supabase_url, supabase_key)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "password123"
 
+REGISTER_USERNAME = 'Lienheur'
+REGISTER_PASSWORD = '2023'
+
+
+def get_register_user(credentials: HTTPBasicCredentials = Depends(security)):
+    if credentials is not None and (
+        (credentials.username == REGISTER_USERNAME and credentials.password == REGISTER_PASSWORD)
+        or (credentials.username == ADMIN_USERNAME and credentials.password == ADMIN_PASSWORD)
+    ):
+        return credentials.username
+    raise HTTPException(status_code=401, detail='認証が必要です', headers={'WWW-Authenticate':'Basic'})
+
+
 def get_admin_user(credentials: HTTPBasicCredentials = Depends(security)):
     if credentials is None or credentials.username != ADMIN_USERNAME or credentials.password != ADMIN_PASSWORD:
         raise HTTPException(
@@ -273,7 +286,7 @@ def delete_member(student_id: str, db: Session = Depends(get_db), admin: str = D
 
 # --- 売上・CSV関連 ---
 @app.post("/sales")
-def create_sale(sale: SaleCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+def create_sale(sale: SaleCreate, db: Session = Depends(get_db), operator: str = Depends(get_register_user)):
     return record_sale(db, sale)
 
 @app.get("/sales")
@@ -308,6 +321,6 @@ def dashboard_report(start: date, end: date, db: Session = Depends(get_db), admi
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
-def read_root(admin: str = Depends(get_admin_user)): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
+def read_root(operator: str = Depends(get_register_user)): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
 @app.get("/admin")
 def read_dashboard(admin: str = Depends(get_admin_user)): return FileResponse("static/dashboard.html", headers={"Cache-Control": "no-store"})
