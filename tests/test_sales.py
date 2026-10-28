@@ -59,6 +59,29 @@ class SalesTests(unittest.TestCase):
             db.commit()
         self.assertEqual(self.post(self.payload()).status_code, 409)
 
+    def test_public_catalog_privacy_and_server_side_author(self):
+        auth = (isolated.main.ADMIN_USERNAME, isolated.main.ADMIN_PASSWORD)
+        with TestClient(isolated.main.app) as client:
+            public = client.get('/items')
+            self.assertEqual(public.headers['cache-control'], 'no-store')
+            item = public.json()[0]
+            self.assertEqual(set(item), {'id','name','price','category','image_url','sale_price','is_sale'})
+            self.assertNotIn('A123', public.text)
+            self.assertEqual(client.get('/admin/items').status_code, 401)
+            self.assertEqual(client.get('/admin/items',auth=('invalid','invalid')).status_code, 401)
+            admin = client.get('/admin/items', auth=auth)
+            self.assertEqual(admin.json()[0]['creator_id'], 'A123')
+            self.assertEqual(admin.headers['cache-control'], 'private, no-store')
+            data = self.payload()
+            data['items_json'] = json.dumps({'a':dict(item_id=item['id'],price=item['price'],quantity=1)})
+            self.assertEqual(client.post('/sales',json=data).status_code,200)
+            sale = client.get('/sales',auth=auth).json()[0]
+            saved = json.loads(sale['items_json'])['a']
+            self.assertEqual(saved['creator_id'],'A123')
+            self.assertEqual(saved['material_fee'],10)
+            summary = client.get('/reports/summary',auth=auth).json()
+            self.assertEqual(summary['people'][0]['author'],63)
+
     def test_retry_saved_sale_after_catalog_changes(self):
         payload = self.payload()
         first = self.post(payload)

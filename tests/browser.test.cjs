@@ -23,8 +23,10 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             }
             if (p === '/items') {
                 itemRequests++;
-                return route.fulfill({json:route.request().method() === 'GET' ? items : {item_id:2}});
+                const publicItems = items.map(({creator_id, material_fee, remarks, ...item}) => item);
+                return route.fulfill({json:route.request().method() === 'GET' ? publicItems : {item_id:2}});
             }
+            if (p === '/admin/items') return route.fulfill({json:items});
             if (p === '/sales') {
                 const data = route.request().postDataJSON();
                 sales.push(data);
@@ -51,6 +53,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         assert.match(await page.locator('dialog').innerText(), /完了.*取引番号：42/s);
         assert.equal(sales.length, 1);
         assert(sales[0].request_id);
+        assert(!JSON.stringify(sales[0]).includes('creator_id'));
         const box = await page.locator('dialog').boundingBox();
         assert(box.x >= 0 && box.x + box.width <= 390);
         const screenshot = path.join(process.env.TEMP || '.', 'fes-checkout-mobile.png');
@@ -80,6 +83,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         assert.equal(await page.locator('#newFile').evaluate(el => el.files.length), 1);
         await page.goto('http://127.0.0.1:8765/admin');
         await page.waitForFunction(() => document.getElementById('reportStatus').textContent.includes('最終取得'));
+        assert.equal(await page.locator('#c-1').inputValue(), 'A123');
         await page.getByRole('button',{name:'🧾 取引履歴',exact:true}).click();
         assert.match(await page.locator('#salesTable').innerText(), /42/);
         assert.equal(await page.evaluate(() => window.injected), undefined);

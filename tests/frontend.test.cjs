@@ -29,7 +29,7 @@ let suiteFinished = false;
 process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfinished async test'); process.exitCode = 1; } });
 (async () => {
     const p = page('static/index.html');
-    p.run("addItem('同名', 100, false, 100, 'A', 0, '', 1); addItem('同名', 200, true, 300, 'B', 0, '', 2)");
+    p.run("addItem('同名', 100, false, 100, 1); addItem('同名', 200, true, 300, 2)");
     assert.equal(p.run('Object.keys(cart).length'), 2);
     let finish, requests = 0, body;
     p.context.fetch = async (url, options) => {
@@ -39,7 +39,7 @@ process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfi
     };
     const first = p.run('checkout()');
     await p.run('checkout()');
-    p.run("addItem('別商品', 500, false, 500, '', 0, '', 3); clearCart()");
+    p.run("addItem('別商品', 500, false, 500, 3); clearCart()");
     assert.equal(requests, 1);
     assert.equal(p.run('Object.keys(cart).length'), 2);
     assert.equal(body.total_amount, 300);
@@ -47,7 +47,7 @@ process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfi
     finish({ok: true, json: async () => ({sale_id: 123})});
     await first;
     assert.equal(p.run('Object.keys(cart).length'), 0);
-    p.run("addItem('商品', 100, false, 100, '', 0, '', 1)");
+    p.run("addItem('商品', 100, false, 100, 1)");
     p.context.fetch = async () => { throw Error('offline'); };
     await p.run('checkout()');
     assert.equal(p.run('checkoutUncertain'), true);
@@ -207,7 +207,7 @@ process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfi
     await invalidId.run('submitNewItem()');
     assert.match(invalidId.alerts.at(-1), /学籍番号/);
     const changed = page('static/index.html');
-    changed.run("addItem('商品', 100, false, 100, 'A', 0, '', 1)");
+    changed.run("addItem('商品', 100, false, 100, 1)");
     changed.context.fetch = async url => url === '/sales'
         ? {ok:false,status:409,json:async()=>({detail:{code:'catalog_changed',message:'価格変更・選び直してください'}})}
         : {ok:false,status:503};

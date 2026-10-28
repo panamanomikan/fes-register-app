@@ -6,7 +6,7 @@ from datetime import date
 import hashlib
 import logging
 from typing import Optional
-from fastapi import FastAPI, Depends, Form, UploadFile, File, HTTPException, status
+from fastapi import FastAPI, Depends, Form, UploadFile, File, HTTPException, status, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -96,8 +96,28 @@ def validate_item(name, price, material_fee, sale_price=None, is_sale=False):
     if any(value is not None and value > 2147483647 for value in (price, material_fee, sale_price)):
         raise HTTPException(status_code=422, detail='金額が大きすぎます')
 
-@app.get("/items")
-def read_items(db: Session = Depends(get_db)):
+class PublicItem(BaseModel):
+    id: int
+    name: str
+    price: int
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    sale_price: Optional[int] = None
+    is_sale: Optional[bool] = False
+
+
+@app.get("/items", response_model=list[PublicItem])
+def read_items(response: Response, db: Session = Depends(get_db)):
+    response.headers['Cache-Control'] = 'no-store'
+    # Explicit allowlist: never send author IDs, costs or private remarks to the register.
+    fields = tuple(PublicItem.model_fields)
+    return [{field: getattr(item, field) for field in fields}
+            for item in db.query(database.Item).order_by(database.Item.id).all()]
+
+
+@app.get('/admin/items')
+def read_admin_items(response: Response, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    response.headers['Cache-Control'] = 'private, no-store'
     return db.query(database.Item).order_by(database.Item.id).all()
 
 @app.post("/items")

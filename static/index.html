@@ -176,7 +176,7 @@
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'item-card';
-            card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.creator_id, item.material_fee, item.remarks, item.id);
+            card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.id);
             card.innerHTML = `${badgeHtml}<img src="${imgSrc}" class="item-img" alt="" loading="lazy" decoding="async"><div class="item-name">${escapeHtml(item.name)}</div>${priceHtml}`;
             return card;
         }
@@ -389,12 +389,12 @@
             await sendPendingRegistration();
         }
 
-        function addItem(itemName, price, isSale, originalPrice, creatorId, materialFee, remarks, itemId = null) {
+        function addItem(itemName, price, isSale, originalPrice, itemId = null) {
             if (checkoutBusy || checkoutUncertain) return;
             document.getElementById('checkoutStatus').textContent = '';
             const key = JSON.stringify([itemId, itemId === null ? itemName : '', price, isSale]);
             if (!cart[key]) {
-                cart[key] = { item_id: itemId, name: itemName, price: price, quantity: 0, is_sale: isSale, original_price: originalPrice, creator_id: creatorId, material_fee: materialFee, remarks: remarks };
+                cart[key] = { item_id: itemId, name: itemName, price: price, quantity: 0, is_sale: isSale, original_price: originalPrice };
             }
             cart[key].quantity += 1;
             updateDisplay();

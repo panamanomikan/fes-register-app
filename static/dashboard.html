@@ -283,7 +283,7 @@
 
         async function loadAdminItems() {
             try {
-                const response = await fetch('/items', {cache:'no-store'});
+                const response = await fetch('/admin/items', {cache:'no-store', credentials:'include'});
                 if (!response.ok) throw new Error('取得失敗');
                 const items = await response.json();
                 const tbody = document.querySelector('#itemsTable tbody');
