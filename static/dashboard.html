@@ -432,7 +432,7 @@
         }
 
         async function deleteItem(itemId) {
-            if (!await uiConfirm("本当に削除しますか？")) return;
+            if (!await uiConfirm("この商品を一覧から削除しますか？過去の売上は残ります。誤削除した場合は開発者に復元を依頼できます。")) return;
             try {
                 const response = await fetch(`/items/${itemId}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error('削除失敗');

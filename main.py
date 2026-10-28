@@ -125,13 +125,13 @@ def read_items(response: Response, db: Session = Depends(get_db)):
     # Explicit allowlist: never send author IDs, costs or private remarks to the register.
     fields = tuple(PublicItem.model_fields)
     return [{field: getattr(item, field) for field in fields}
-            for item in db.query(database.Item).order_by(database.Item.id).all()]
+            for item in db.query(database.Item).filter(database.Item.deleted_at.is_(None)).order_by(database.Item.id).all()]
 
 
 @app.get('/admin/items')
 def read_admin_items(response: Response, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     response.headers['Cache-Control'] = 'private, no-store'
-    return db.query(database.Item).order_by(database.Item.id).all()
+    return db.query(database.Item).filter(database.Item.deleted_at.is_(None)).order_by(database.Item.id).all()
 
 @app.post("/items")
 def create_item(
@@ -228,7 +228,7 @@ def update_item_full(
 ):
     validate_item(name, price, material_fee, sale_price, is_sale)
     validate_student_id(creator_id)
-    db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
+    db_item = db.query(database.Item).filter(database.Item.id == item_id, database.Item.deleted_at.is_(None)).with_for_update().first()
     if not db_item: raise HTTPException(status_code=404, detail="商品が見つかりません")
 
     db_item.name = name
@@ -254,9 +254,10 @@ def update_item_full(
 
 @app.delete("/items/{item_id}")
 def delete_item(item_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    db_item = db.query(database.Item).filter(database.Item.id == item_id).first()
+    db_item = db.query(database.Item).filter(database.Item.id == item_id, database.Item.deleted_at.is_(None)).with_for_update().first()
     if not db_item: raise HTTPException(status_code=404, detail="商品が見つかりません")
-    db.delete(db_item)
+    from datetime import datetime, timezone
+    db_item.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "Deleted"}
 

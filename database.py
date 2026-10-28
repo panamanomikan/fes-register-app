@@ -36,6 +36,7 @@ class Item(Base):
     image_url = Column(String, nullable=True)
     sale_price = Column(Integer, nullable=True)
     is_sale = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True)
     
     # --- 新規追加項目 ---
     creator_id = Column(String, nullable=True)   # 製作者の学籍番号

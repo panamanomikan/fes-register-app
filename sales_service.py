@@ -34,7 +34,7 @@ def record_sale(db, sale):
         ids = [i.get('item_id') for i in details.values()]
         if any(type(i) is not int or i <= 0 for i in ids):
             raise HTTPException(422, '登録商品を選んでください。手動入力は廃止しました。')
-        catalog = {i.id: i for i in db.query(database.Item).filter(database.Item.id.in_(ids)).order_by(database.Item.id).with_for_update().all()}
+        catalog = {i.id: i for i in db.query(database.Item).filter(database.Item.id.in_(ids), database.Item.deleted_at.is_(None)).order_by(database.Item.id).with_for_update().all()}
         canonical = {}
         for key_in_cart, info in details.items():
             item = catalog.get(info['item_id'])

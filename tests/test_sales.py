@@ -72,6 +72,34 @@ class SalesTests(unittest.TestCase):
             db.commit()
         self.assertEqual(self.post(self.payload()).status_code, 409)
 
+    def test_soft_delete_and_developer_restore_preserves_sales(self):
+        import restore_item
+        import io
+        from contextlib import redirect_stdout
+        self.assertEqual(self.post(self.payload()).status_code,200)
+        auth = (isolated.main.ADMIN_USERNAME, isolated.main.ADMIN_PASSWORD)
+        with TestClient(isolated.main.app) as client:
+            self.assertEqual(client.delete('/items/'+str(self.item_id),auth=auth).status_code,200)
+            self.assertEqual(client.get('/items').json(),[])
+            self.assertEqual(client.get('/admin/items',auth=auth).json(),[])
+            self.assertEqual(self.post(self.payload()).status_code,409)
+            self.assertEqual(client.put('/items/'+str(self.item_id),data={'name':'changed','price':90,'creator_id':'A123'},auth=auth).status_code,404)
+        with database.SessionLocal() as db:
+            self.assertIsNotNone(db.get(database.Item,self.item_id).deleted_at)
+            self.assertEqual(reporting.calculate(reporting.selected_sales(db),[])['revenue'],90)
+        with patch('sys.argv',['restore_item.py',str(self.item_id)]),redirect_stdout(io.StringIO()):
+            restore_item.main()
+        with database.SessionLocal() as db:
+            self.assertIsNotNone(db.get(database.Item,self.item_id).deleted_at)
+        with patch('sys.argv',['restore_item.py',str(self.item_id),'--apply']),redirect_stdout(io.StringIO()):
+            restore_item.main()
+        self.assertEqual(self.post(self.payload()).status_code,200)
+        with database.SessionLocal() as db:
+            self.assertIsNone(db.get(database.Item,self.item_id).deleted_at)
+            report=reporting.calculate(reporting.selected_sales(db),[])
+            self.assertEqual(report['revenue'],180)
+            self.assertEqual(len(report['products']),1)
+
     def test_register_account_can_checkout_but_cannot_administer(self):
         auth = (isolated.main.REGISTER_USERNAME, isolated.main.REGISTER_PASSWORD)
         with TestClient(isolated.main.app) as client:
