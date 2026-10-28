@@ -273,7 +273,7 @@ def delete_member(student_id: str, db: Session = Depends(get_db), admin: str = D
 
 # --- 売上・CSV関連 ---
 @app.post("/sales")
-def create_sale(sale: SaleCreate, db: Session = Depends(get_db)):
+def create_sale(sale: SaleCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     return record_sale(db, sale)
 
 @app.get("/sales")
@@ -308,6 +308,6 @@ def dashboard_report(start: date, end: date, db: Session = Depends(get_db), admi
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
-def read_root(): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
+def read_root(admin: str = Depends(get_admin_user)): return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
 @app.get("/admin")
 def read_dashboard(admin: str = Depends(get_admin_user)): return FileResponse("static/dashboard.html", headers={"Cache-Control": "no-store"})

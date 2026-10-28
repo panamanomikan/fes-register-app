@@ -30,7 +30,7 @@ class SalesTests(unittest.TestCase):
 
     def post(self, payload):
         with TestClient(isolated.main.app) as client:
-            return client.post('/sales', json=payload)
+            return client.post('/sales', json=payload, auth=(isolated.main.ADMIN_USERNAME, isolated.main.ADMIN_PASSWORD))
 
     def test_parallel_same_and_distinct_receipts(self):
         payload = self.payload()
@@ -46,6 +46,19 @@ class SalesTests(unittest.TestCase):
             info = json.loads(db.query(database.Sale).first().items_json)['item']
             self.assertEqual(info['creator_id'], 'A123')
             self.assertEqual(info['name'], '作品')
+
+    def test_authentication_required_before_writing(self):
+        payload = self.payload()
+        with TestClient(isolated.main.app) as client:
+            for headers in ({}, {'Authorization':'Basic invalid'}, {'Authorization':'Bearer fake'}):
+                self.assertEqual(client.post('/sales',json=payload,headers=headers).status_code,401)
+            self.assertEqual(client.post('/sales',json=payload,auth=('wrong','wrong')).status_code,401)
+            self.assertEqual(client.get('/').status_code,401)
+            self.assertEqual(client.get('/',auth=(isolated.main.ADMIN_USERNAME,isolated.main.ADMIN_PASSWORD)).status_code,200)
+        with database.SessionLocal() as db:
+            self.assertEqual(db.query(database.Sale).count(),0)
+            self.assertEqual(db.query(database.SaleSubmission).count(),0)
+        self.assertEqual(self.post(payload).status_code,200)
 
     def test_stale_price_deleted_and_manual_rejected(self):
         self.assertEqual(self.post(self.payload(price=100)).status_code, 409)
@@ -74,7 +87,7 @@ class SalesTests(unittest.TestCase):
             self.assertEqual(admin.headers['cache-control'], 'private, no-store')
             data = self.payload()
             data['items_json'] = json.dumps({'a':dict(item_id=item['id'],price=item['price'],quantity=1)})
-            self.assertEqual(client.post('/sales',json=data).status_code,200)
+            self.assertEqual(client.post('/sales',json=data,auth=auth).status_code,200)
             sale = client.get('/sales',auth=auth).json()[0]
             saved = json.loads(sale['items_json'])['a']
             self.assertEqual(saved['creator_id'],'A123')
@@ -132,7 +145,9 @@ class SalesTests(unittest.TestCase):
             self.assertEqual(client.get('/reports/summary').status_code, 401)
             report = client.get('/reports/summary', auth=auth).json()
             self.assertEqual(report['people'][0]['author'], 63)
-            self.assertEqual(report['unallocated'], 18)
+            self.assertEqual(report['unallocated'], 0)
+            self.assertEqual(report['club_adjustment'], 18)
+            self.assertEqual(report['club_fee'], 27)
             for route in ('overall', 'distribution'):
                 response = client.get('/export/' + route, auth=auth)
                 self.assertEqual(response.status_code, 200)
@@ -150,7 +165,7 @@ class SalesTests(unittest.TestCase):
         with TestClient(isolated.main.app) as client:
             for n in range(200):
                 self.item_id = ids[n % 40]
-                self.assertEqual(client.post('/sales', json=self.payload(price=1000)).status_code, 200)
+                self.assertEqual(client.post('/sales', json=self.payload(price=1000), auth=(isolated.main.ADMIN_USERNAME, isolated.main.ADMIN_PASSWORD)).status_code, 200)
             self.assertEqual(len(client.get('/items').json()), 40)
             report = client.get('/reports/summary', auth=(isolated.main.ADMIN_USERNAME, isolated.main.ADMIN_PASSWORD)).json()
             self.assertEqual(report['count'], 200)
@@ -171,11 +186,17 @@ class CalculationTests(unittest.TestCase):
         r = reporting.calculate(self.sales([101,101,101]), [SimpleNamespace(student_id='A',shift_slots=1),SimpleNamespace(student_id='B',shift_slots=2)])
         self.assertEqual(r['people'][0]['author'], 212)
         self.assertEqual([p['shift'] for p in r['people']], [20,40])
-        self.assertEqual(r['unallocated'], 1)
-        self.assertEqual(r['revenue'], sum(p['total'] for p in r['people']) + r['group'] + r['unallocated'])
+        self.assertEqual(r['unallocated'], 0)
+        self.assertEqual(r['club_adjustment'], 1)
+        self.assertEqual(r['revenue'], sum(p['total'] for p in r['people']) + r['club_fee'])
 
     def test_legacy_manual_unallocated(self):
         sales = self.sales([100])
         sales[0]['items_json'] = sales[0]['items_json'].replace('"A"', '"manual"')
         r = reporting.calculate(sales, [])
-        self.assertEqual(r['unallocated'], 90)
+        self.assertEqual(r['unallocated'], 0)
+        self.assertEqual(r['club_fee'], 100)
+
+    def test_zero_sales_club_fee(self):
+        r = reporting.calculate([], [])
+        self.assertEqual(r['club_fee'], 0)

@@ -434,7 +434,7 @@
                 for (let attempt = 0; attempt < 2; attempt++) {
                     try {
                         const res = await registrationFetch('/sales', {
-                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(pendingCheckout)
                         });
                         if (!res.ok) {

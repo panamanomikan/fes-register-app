@@ -65,8 +65,10 @@ def calculate(sales, members):
             author=author if payable else 0, shift=shift if payable else 0,
             total=author + shift if payable else 0))
     group = revenue * 10 // 100
+    club_adjustment = revenue-group-sum(p['total'] for p in people)
     return dict(revenue=revenue, count=sum(not s['voided'] for s in sales),
-        group=group, people=people, unallocated=revenue-group-sum(p['total'] for p in people),
+        group=group, people=people, unallocated=0,
+        club_adjustment=club_adjustment, club_fee=group+club_adjustment,
         products=products, total_slots=total_slots)
 
 
@@ -74,8 +76,10 @@ def summary_rows(report, start, end):
     return [[], ['対象期間 (JST)', period_label(start, end)],
         ['総売上', report['revenue']], ['団体還元（期間合計の10%・円未満切捨て）', report['group']],
         ['個人支払合計', sum(p['total'] for p in report['people'])],
-        ['未配分残額（端数・配分先未設定分を含む）', report['unallocated']],
-        ['計算方針', '個人ごと・期間合計で作者70%とシフト20%をそれぞれ円未満切捨て。材料費は差し引かない。'],
+        ['サークル費へ加算する残額（端数・配分先未設定分を含む）', report['club_adjustment']],
+        ['サークル費合計（団体還元10%＋残額）', report['club_fee']],
+        ['未配分残額（サークル費への配分後）', report['unallocated']],
+        ['計算方針', '個人ごと・期間合計で作者70%とシフト20%をそれぞれ円未満切捨て。材料費は差し引かない。残額は全額サークル費へ配分。'],
         ['注意', '日別の支払額を合算した値と、全期間で一括計算した支払額は端数により異なる。精算は同じ期間で統一。']]
 
 
