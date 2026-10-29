@@ -100,7 +100,7 @@
                         <tr>
                             <th>画像</th>
                             <th>商品名 / 学籍番号</th>
-                            <th>定価 / 材料費</th>
+                            <th>定価 / 1個あたりの材料費（円）</th>
                             <th>セール価格 / 有効化</th>
                             <th>備考</th>
                             <th>操作</th>
@@ -363,9 +363,11 @@
                 }
             }
             adminSaving = true;
-            const costlyItems = Array.from(dirtyItems).filter(id =>
-                Number(document.getElementById(`m-${id}`).value) > Number(document.getElementById(`p-${id}`).value));
-            if (costlyItems.length && !await uiConfirm(`材料費が定価を上回る商品が${costlyItems.length}件あります。この金額で保存してもよろしいですか？`)) { adminSaving = false; return; }
+            const costlyItems = Array.from(dirtyItems).filter(id => {
+                const price = Number(document.getElementById((document.getElementById(`is-${id}`).checked ? 'sp-' : 'p-') + id).value);
+                return Number(document.getElementById(`m-${id}`).value) * 100 > price * 70;
+            });
+            if (costlyItems.length && !await uiConfirm(`作者への還元見込額（販売価格の70％）が1個あたりの材料費を下回る商品が${costlyItems.length}件あります。セール中はセール価格で判定し、シフト代は含みません。この金額で保存してもよろしいですか？`)) { adminSaving = false; return; }
             const btn = document.getElementById('saveChangesBtn');
             btn.textContent = '保存中...';
             btn.style.animation = 'none';

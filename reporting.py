@@ -75,12 +75,16 @@ def calculate(sales, members):
 def summary_rows(report, start, end):
     return [[], ['対象期間 (JST)', period_label(start, end)],
         ['総売上', report['revenue']], ['団体還元（期間合計の10%・円未満切捨て）', report['group']],
+        ['作者還元額合計（各作者の売上×70%・円未満切捨て）', sum(p['author'] for p in report['people'])],
+        ['シフト配分原資（総売上×20%・端数処理前）', f"{report['revenue'] * 20 // 100}.{report['revenue'] * 20 % 100:02d}"],
+        ['シフトコマ数合計', report['total_slots']],
+        ['シフト還元額合計（総売上×20%をコマ数で按分・個人別切捨て）', sum(p['shift'] for p in report['people'])],
         ['個人支払合計', sum(p['total'] for p in report['people'])],
         ['サークル費へ加算する残額（端数・配分先未設定分を含む）', report['club_adjustment']],
         ['サークル費合計（団体還元10%＋残額）', report['club_fee']],
         ['未配分残額（サークル費への配分後）', report['unallocated']],
         ['計算方針', '個人ごと・期間合計で作者70%とシフト20%をそれぞれ円未満切捨て。材料費は差し引かない。残額は全額サークル費へ配分。'],
-        ['注意', '日別の支払額を合算した値と、全期間で一括計算した支払額は端数により異なる。精算は同じ期間で統一。']]
+        ['注意', 'シフトは登録者の総コマ数で按分。作者とシフト担当者は別集計。同じ学籍番号なら両方を受け取る。シフト総コマ数0の場合はシフト原資も残額としてサークル費へ入るため、精算前に登録確認。']]
 
 
 def period_label(start=None, end=None):
@@ -116,10 +120,10 @@ def csv_response(rows, filename):
 def export(db, kind, start=None, end=None):
     report = calculate(selected_sales(db, start, end), db.query(database.Member).all())
     if kind in ('overall', 'period'):
-        rows = [['製作者学籍番号', '作品名', '販売単価', '材料費（控除なし）', '備考', 'セール', '個数', '売上']]
+        rows = [['製作者学籍番号', '作品名', '販売単価', '1個あたりの材料費（円・控除なし）', '備考', 'セール', '個数', '売上']]
         rows += [[*key, qty, key[2]*qty] for key, qty in report['products'].items()]
     else:
-        rows = [['学籍番号', 'シフトコマ数', 'シフト代金', '作者利益', '総収入']]
+        rows = [['学籍番号', 'シフトコマ数', 'シフト還元額', '作者還元額', '受取合計']]
         rows += [[p['student_id'], p['shift_slots'], p['shift'], p['author'], p['total']] for p in report['people']]
     summary = ([[], ['対象期間 (JST)', period_label(start, end)], ['総売上', report['revenue']],
                 ['会計件数', report['count']]] if kind == 'period' else summary_rows(report, start, end))

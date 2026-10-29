@@ -147,7 +147,7 @@
                     <h3 style="margin-top:0;">商品の新規登録</h3>
                     <input type="text" id="newName" placeholder="商品名">
                     <input type="number" id="newPrice" placeholder="定価 (税込)">
-                    <input type="number" id="newMaterial" placeholder="材料費 (原価)">
+                    <input type="number" id="newMaterial" placeholder="1個あたりの材料費（円）">
                     <input type="text" id="newCreator" placeholder="製作者 学籍番号（必須・半角英数字）">
                     <input type="text" id="newCategory" placeholder="カテゴリ（例：キーホルダー）">
                     <input type="text" id="newRemarks" placeholder="備考 (例: 色違いなど)">
@@ -352,12 +352,12 @@
             const price = Number(document.getElementById('newPrice').value);
             const material = Number(document.getElementById('newMaterial').value);
             const costSignature = JSON.stringify([price, material]);
-            if (material > price && approvedCost !== costSignature) {
+            if (material * 100 > price * 70 && approvedCost !== costSignature) {
                 pendingCostConfirmation = costSignature;
                 const panel = document.getElementById('costConfirmation');
-                document.getElementById('costConfirmationMessage').textContent = `材料費（${material}円）が定価（${price}円）を上回っています。この金額で登録してもよろしいですか？`;
+                document.getElementById('costConfirmationMessage').textContent = `作者への還元見込額（1個あたり${price * 70 / 100}円・定価の70％）が材料費（${material}円）を下回っています。シフト代は含みません。この金額で登録してもよろしいですか？`;
                 panel.hidden = false;
-                showRegistrationStatus('材料費が定価を上回っています。商品登録欄の確認ボタンを選んでください。');
+                showRegistrationStatus('作者への還元見込額が材料費を下回っています。商品登録欄の確認ボタンを選んでください。');
                 panel.scrollIntoView?.({block: 'center'});
                 return;
             }

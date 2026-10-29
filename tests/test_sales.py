@@ -242,3 +242,17 @@ class CalculationTests(unittest.TestCase):
     def test_zero_sales_club_fee(self):
         r = reporting.calculate([], [])
         self.assertEqual(r['club_fee'], 0)
+
+    def test_authors_and_shift_workers_are_independent(self):
+        sales=[dict(total_amount=10000,voided=False,items_json=json.dumps({
+            'a':dict(price=6000,quantity=1,creator_id='YEAR1'),
+            'b':dict(price=4000,quantity=1,creator_id='YEAR4')}))]
+        members=[SimpleNamespace(student_id='YEAR2',shift_slots=1),SimpleNamespace(student_id='YEAR3',shift_slots=3)]
+        r=reporting.calculate(sales,members)
+        people={p['student_id']:p for p in r['people']}
+        self.assertEqual(people['YEAR1']['total'],4200)
+        self.assertEqual(people['YEAR4']['total'],2800)
+        self.assertEqual(people['YEAR2']['total'],500)
+        self.assertEqual(people['YEAR3']['total'],1500)
+        self.assertEqual(r['club_fee'],1000)
+        self.assertEqual(sum(p['total'] for p in r['people'])+r['club_fee'],10000)
