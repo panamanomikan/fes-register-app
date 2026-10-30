@@ -15,7 +15,7 @@ function page(file) {
                 if (!nodes.has(id)) nodes.set(id, {value: '', style: {}, dataset: {}, classList: {add() {}}, appendChild() {}});
                 return nodes.get(id);
             },
-            createElement: () => ({}),
+            createElement: () => ({style:{},setAttribute() {},appendChild() {}}),
         },
     });
     const source = readFileSync(file, 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -41,6 +41,8 @@ process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfi
     await p.run('checkout()');
     p.run("addItem('別商品', 500, false, 500, 3); clearCart()");
     assert.equal(requests, 1);
+    p.run('decreaseItem(Object.keys(cart)[0])');
+    assert.equal(p.run('Object.values(cart)[0].quantity'), 1);
     assert.equal(p.run('Object.keys(cart).length'), 2);
     assert.equal(body.total_amount, 300);
     assert.equal(Object.keys(JSON.parse(body.items_json)).length, 2);
@@ -51,6 +53,8 @@ process.on('beforeExit', () => { if (!suiteFinished) { console.error('FAIL: unfi
     p.context.fetch = async () => { throw Error('offline'); };
     await p.run('checkout()');
     assert.equal(p.run('checkoutUncertain'), true);
+    p.run('decreaseItem(Object.keys(cart)[0])');
+    assert.equal(p.run('Object.values(cart)[0].quantity'), 1);
     assert.equal(p.run('Object.keys(cart).length'), 1);
     const a = page('static/dashboard.html');
     a.run('dirtyItems.add(1); isDirty = true');

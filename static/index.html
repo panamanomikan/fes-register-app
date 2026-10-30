@@ -428,6 +428,13 @@
         }
         function returnToProducts() { window.scrollTo({top:productScroll}); }
         function clearCart() { if (checkoutBusy || checkoutUncertain) return; cart = {}; updateDisplay(); }
+        function decreaseItem(key) {
+            if (checkoutBusy || checkoutUncertain || !cart[key]) return;
+            cart[key].quantity -= 1;
+            if (cart[key].quantity <= 0) delete cart[key];
+            document.getElementById('checkoutStatus').textContent = '';
+            updateDisplay();
+        }
 
         function updateDisplay() {
             let total = 0;
@@ -438,6 +445,13 @@
                 total += item.price * item.quantity;
                 const li = document.createElement('li');
                 li.innerHTML = `${item.is_sale ? '<span style="color:red;">[SALE]</span>' : ''} ${escapeHtml(item.name)} × ${item.quantity} = ¥${item.price * item.quantity}`;
+                const decrease = document.createElement('button');
+                decrease.type = 'button';
+                decrease.textContent = '− 1個';
+                decrease.setAttribute('aria-label', item.name + 'を1個減らす');
+                decrease.style.cssText = 'min-height:44px;padding:8px 12px;margin:6px 0 6px 10px;font-size:16px;border:1px solid #999;border-radius:6px;background:white;';
+                decrease.onclick = () => decreaseItem(key);
+                li.appendChild(decrease);
                 list.appendChild(li);
             }
             document.getElementById('totalDisplay').textContent = total;
