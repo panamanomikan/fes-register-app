@@ -36,6 +36,12 @@
         .search-row input { min-width:0; flex:1; font-size:16px; padding:12px; border:1px solid #aaa; border-radius:8px; }
         .search-row button { flex-shrink:0; padding:12px; border:1px solid #1565c0; background:#e8f0fe; color:#174ea6; border-radius:8px; }
         .search-row button[hidden] { display:none; }
+        body { padding-bottom:calc(100px + env(safe-area-inset-bottom)); }
+        .cart-dock { position:fixed; bottom:0; left:0; right:0; z-index:20; background:#fff; border-top:1px solid #ccc; box-shadow:0 -3px 12px #0002; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:14px; align-items:center; justify-content:space-between; }
+        .cart-dock strong { display:block; font-size:1.2em; }
+        .cart-dock button { padding:14px 18px; border:0; border-radius:8px; background:#1565c0; color:white; font-size:16px; font-weight:bold; }
+        .item-card.just-added { filter:brightness(0.65); }
+        .add-toast { position:fixed; bottom:calc(92px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); max-width:85vw; width:max-content; box-sizing:border-box; background:#263238; color:white; border-radius:8px; padding:10px 16px; z-index:21; pointer-events:none; overflow-wrap:anywhere; }
     </style>
 </head>
 <body>
@@ -51,7 +57,7 @@
         <div id="searchResults" hidden><p id="searchStatus" role="status"></p><div id="searchGrid" class="item-grid"></div></div>
         <div id="tabsContainer" class="tabs"><p>読み込み中...</p></div>
         <div id="tabContentsContainer"></div>
-        <div class="cart">
+        <div class="cart" id="cartSection" tabindex="-1">
             <p style="margin-top:0; font-weight:bold;">🛒 カートの中身:</p>
             <ul id="cartItemsList"></ul>
             <hr style="border: 0; border-top: 1px dashed #ccc;">
@@ -61,7 +67,10 @@
         <button class="action-btn btn-clear" onclick="clearCart()">カートを取消</button>
         <p id="checkoutStatus" role="status" aria-live="polite" style="white-space:pre-line;"></p>
         <button id="checkoutButton" class="action-btn btn-checkout" onclick="checkout()">会計確定</button>
+        <button type="button" onclick="returnToProducts()">商品選択に戻る</button>
     </div>
+    <div class="cart-dock" aria-label="カート概要"><div><span id="dockCount">0</span>点<strong>¥<span id="dockTotal">0</span></strong></div><button type="button" onclick="showCart()">カートを確認</button></div>
+    <div id="addToast" class="add-toast" role="status" aria-live="polite" hidden></div>
 
     <script src="/static/ui.js"></script>
     <script>
@@ -176,7 +185,18 @@
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'item-card';
-            card.onclick = () => addItem(item.name, currentPrice, isSaleActive, item.price, item.id);
+            card.onclick = () => {
+                if (checkoutBusy || checkoutUncertain) return;
+                addItem(item.name, currentPrice, isSaleActive, item.price, item.id);
+                card.classList.add('just-added');
+                clearTimeout(card.feedbackTimer);
+                card.feedbackTimer = setTimeout(() => card.classList.remove('just-added'), 220);
+                const toast = document.getElementById('addToast');
+                toast.textContent = item.name + ' を追加しました';
+                toast.hidden = false;
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => toast.hidden = true, 1400);
+            };
             card.innerHTML = `${badgeHtml}<img src="${imgSrc}" class="item-img" alt="" loading="lazy" decoding="async"><div class="item-name">${escapeHtml(item.name)}</div>${priceHtml}`;
             return card;
         }
@@ -400,6 +420,13 @@
             updateDisplay();
         }
 
+        let toastTimer, productScroll = 0;
+        function showCart() {
+            productScroll = window.scrollY;
+            document.getElementById('cartSection').scrollIntoView({block:'start'});
+            document.getElementById('cartSection').focus({preventScroll:true});
+        }
+        function returnToProducts() { window.scrollTo({top:productScroll}); }
         function clearCart() { if (checkoutBusy || checkoutUncertain) return; cart = {}; updateDisplay(); }
 
         function updateDisplay() {
@@ -414,6 +441,8 @@
                 list.appendChild(li);
             }
             document.getElementById('totalDisplay').textContent = total;
+            document.getElementById('dockTotal').textContent = total.toLocaleString();
+            document.getElementById('dockCount').textContent = Object.values(cart).reduce((sum,item) => sum + item.quantity, 0);
         }
 
         async function checkout() {
