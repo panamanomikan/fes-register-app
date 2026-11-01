@@ -79,6 +79,7 @@
         let pendingCheckout = null;
         let catalogLoading = false;
         let activeCategory = null;
+        let popularityLoading = false;
         let checkoutBusy = false;
         let checkoutUncertain = false;
         let itemRegistrationBusy = false;
@@ -115,9 +116,23 @@
             const tabsContainer = document.getElementById('tabsContainer');
             const contentsContainer = document.getElementById('tabContentsContainer');
             const existingForm = document.getElementById('tab-operations');
+            const existingPopularity = document.getElementById('tab-popular');
             tabsContainer.innerHTML = '';
             contentsContainer.innerHTML = '';
             const categories = [...new Set(itemsData.map(item => item.category || '一般'))];
+
+            const popularButton = document.createElement('button');
+            popularButton.type = 'button';
+            popularButton.className = 'tab-btn';
+            popularButton.textContent = '直近の人気';
+            popularButton.dataset.tabId = 'popular';
+            popularButton.onclick = () => { activeCategory = 'popular'; switchTab('popular'); loadPopularity(); };
+            tabsContainer.appendChild(popularButton);
+            const popularContent = existingPopularity || document.createElement('div');
+            popularContent.id = 'tab-popular';
+            popularContent.className = 'tab-content';
+            if (!existingPopularity) popularContent.innerHTML = '<p>過去60分の販売個数・上位10商品</p><button type="button" onclick="loadPopularity()">ランキングを更新</button><p id="popularStatus" role="status"></p><div id="popularGrid" class="item-grid"></div>';
+            contentsContainer.appendChild(popularContent);
 
             categories.forEach((category, index) => {
                 const btn = document.createElement('button');
@@ -170,7 +185,31 @@
                 </div>`;
             contentsContainer.appendChild(opsContent);
             const selected = categories.indexOf(activeCategory);
-            switchTab(activeCategory === 'operations' || !categories.length ? 'operations' : 'category-' + Math.max(0, selected));
+            switchTab(activeCategory === 'popular' ? 'popular' : activeCategory === 'operations' || !categories.length ? 'operations' : 'category-' + Math.max(0, selected));
+        }
+
+        async function loadPopularity() {
+            if (popularityLoading) return;
+            popularityLoading = true;
+            const status = document.getElementById('popularStatus');
+            const grid = document.getElementById('popularGrid');
+            // Clear old cards before loading so a delayed response cannot rearrange tappable cards.
+            grid.innerHTML = '';
+            status.textContent = 'ランキングを読み込み中…';
+            try {
+                const response = await fetch('/items/popular', {cache: 'no-store', signal: AbortSignal.timeout(15000)});
+                if (!response.ok) throw new Error('ランキング取得失敗');
+                const data = await response.json();
+                const catalogResponse = await fetch('/items', {cache: 'no-store', signal: AbortSignal.timeout(15000)});
+                if (!catalogResponse.ok) throw new Error('商品取得失敗');
+                const catalog = await catalogResponse.json();
+                const byId = new Map(catalog.map(item => [item.id, item]));
+                const ranked = data.item_ids.map(id => byId.get(id)).filter(Boolean);
+                ranked.forEach(item => grid.appendChild(createItemCard(item)));
+                status.textContent = ranked.length ? '更新：' + new Date().toLocaleTimeString('ja-JP') : '直近60分の販売はありません。通常のカテゴリから選んでください。';
+            } catch (error) {
+                status.textContent = 'ランキングを取得できませんでした。再試行するか、通常のカテゴリから選んでください。';
+            } finally { popularityLoading = false; }
         }
 
         function createItemCard(item) {

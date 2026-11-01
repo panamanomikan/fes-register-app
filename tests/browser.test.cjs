@@ -12,7 +12,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
         page.on('dialog', d => { errors.push('Unexpected native dialog: ' + d.message()); d.dismiss(); });
-        let sales = [], itemRequests = 0;
+        let sales = [], itemRequests = 0, popularIds = [1], popularFails = false, popularRequests = 0;
         let items = [{id:1,name:'<img src=x onerror="window.injected=true">作品',price:90,category:'キーホルダー',creator_id:'A123',material_fee:10,remarks:'',image_url:'',sale_price:null,is_sale:false}];
         await page.route('**/*', async route => {
             const url = new URL(route.request().url());
@@ -27,6 +27,10 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
                 return route.fulfill({json:route.request().method() === 'GET' ? publicItems : {item_id:2}});
             }
             if (p === '/admin/items') return route.fulfill({json:items});
+            if (p === '/items/popular') {
+                popularRequests++;
+                return route.fulfill({status:popularFails ? 503 : 200,json:{item_ids:popularIds}});
+            }
             if (p === '/sales') {
                 const data = route.request().postDataJSON();
                 sales.push(data);
@@ -75,6 +79,24 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         const screenshot = path.join(process.env.TEMP || '.', 'fes-checkout-mobile.png');
         await page.screenshot({path:screenshot});
         await page.getByRole('button',{name:'確認しました',exact:true}).click();
+        assert.equal(await page.locator('#tabsContainer button').first().innerText(), '直近の人気');
+        await page.getByRole('button',{name:'直近の人気',exact:true}).click();
+        await page.locator('#popularGrid .item-card').waitFor();
+        await page.locator('#popularGrid .item-card').click();
+        await page.getByRole('button',{name:'キーホルダー',exact:true}).click();
+        await page.locator('.tab-content.active .item-card').click();
+        assert.equal(await page.locator('#dockCount').innerText(), '2');
+        assert.equal(await page.locator('#cartItemsList li').count(), 1);
+        const beforeRefresh = popularRequests;
+        await page.evaluate(() => loadItems());
+        assert.equal(popularRequests, beforeRefresh);
+        popularIds = [];
+        await page.getByRole('button',{name:'直近の人気',exact:true}).click();
+        await page.waitForFunction(() => document.getElementById('popularStatus').textContent.includes('販売はありません'));
+        popularFails = true;
+        await page.getByRole('button',{name:'ランキングを更新',exact:true}).click();
+        await page.waitForFunction(() => document.getElementById('popularStatus').textContent.includes('取得できません'));
+        assert.equal(await page.locator('#dockCount').innerText(), '2');
         await page.getByRole('button',{name:'⚙️ 商品登録',exact:true}).click();
         await page.locator('#newName').fill('入力を保持');
         await page.locator('#registerItemButton').click();

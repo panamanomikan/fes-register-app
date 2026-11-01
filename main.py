@@ -17,6 +17,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 import database
 import reporting
+import popularity
 from sales_service import record_sale
 
 load_dotenv()
@@ -126,6 +127,12 @@ def read_items(response: Response, db: Session = Depends(get_db)):
     fields = tuple(PublicItem.model_fields)
     return [{field: getattr(item, field) for field in fields}
             for item in db.query(database.Item).filter(database.Item.deleted_at.is_(None)).order_by(database.Item.id).all()]
+
+
+@app.get('/items/popular')
+def popular_items(response: Response, db: Session = Depends(get_db), operator: str = Depends(get_register_user)):
+    response.headers['Cache-Control'] = 'private, no-store'
+    return {'item_ids': popularity.recent_item_ids(db)}
 
 
 @app.get('/admin/items')
